@@ -1,0 +1,26 @@
+{
+  "name": "webrtc-assignment",
+  "version": "1.0.0",
+  "description": "This assignment is about controlling a desktop JavaScript experience with a smartphone using a WebRTC data channel.",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gagatkaa/webRTC-assignment.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/gagatkaa/webRTC-assignment/issues"
+  },
+  "homepage": "https://github.com/gagatkaa/webRTC-assignment#readme",
+  "dependencies": {
+    "express": "^5.2.1",
+    "nodemon": "^3.1.14",
+    "socket.io": "^4.8.3"
+  }
+}
