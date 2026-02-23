@@ -18,7 +18,6 @@ io.on("connection", (socket) => {
   socket.on("update", (targetSocketId, data) => {
     if (!clients[targetSocketId]) return;
 
-    // store what we received (optional)
     if (typeof data.x === "number") clients[socket.id].x = data.x;
     if (typeof data.y === "number") clients[socket.id].y = data.y;
     if (typeof data.gx === "number") clients[socket.id].gx = data.gx;
