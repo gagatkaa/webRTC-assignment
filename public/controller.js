@@ -13,7 +13,7 @@ function log(msg) {
 
 // ── 1. Target ID ─────────────────────────────────────────────────────────────
 const params = new URLSearchParams(location.search);
-const targetId = params.get("target");
+const targetId = params.get("target") || params.get("id");
 
 log("Protocol: " + location.protocol);
 log("Target: " + (targetId || "MISSING ⚠️"));
