@@ -1,13 +1,16 @@
 const express = require("express");
 const app = express();
+
 const fs = require("fs");
 const https = require("https");
+const path = require("path");
+
 const { Server } = require("socket.io");
 const os = require("os");
 
 const options = {
-  key: fs.readFileSync("./localhost.key"),
-  cert: fs.readFileSync("./localhost.crt"),
+  key: fs.readFileSync(path.join(__dirname, "certs", "key.pem")),
+  cert: fs.readFileSync(path.join(__dirname, "certs", "cert.pem")),
 };
 
 const server = https.createServer(options, app);
@@ -20,16 +23,15 @@ io.on("connection", (socket) => {
   clients[socket.id] = { id: socket.id, x: 0, y: 0 };
   console.log("Socket connected", socket.id);
 
-
   socket.emit("your-id", socket.id);
 
   socket.on("update", (targetSocketId, data) => {
     if (!clients[targetSocketId]) return;
 
-    if (typeof data.x === "number") clients[socket.id].x = data.x;
-    if (typeof data.y === "number") clients[socket.id].y = data.y;
-    if (typeof data.gx === "number") clients[socket.id].gx = data.gx;
-    if (typeof data.gy === "number") clients[socket.id].gy = data.gy;
+    if (typeof data?.x === "number") clients[socket.id].x = data.x;
+    if (typeof data?.y === "number") clients[socket.id].y = data.y;
+    if (typeof data?.gx === "number") clients[socket.id].gx = data.gx;
+    if (typeof data?.gy === "number") clients[socket.id].gy = data.gy;
 
     io.to(targetSocketId).emit("update", data);
   });
@@ -56,10 +58,9 @@ server.listen(port, "0.0.0.0", () => {
 
   console.log("\nAll available addresses:");
   allIPs.forEach((i) =>
-    console.log(`  [${i.name}] http://${i.address}:${port}`),
+    console.log(`  [${i.name}] https://${i.address}:${port}`),
   );
 
-  
   const preferred =
     allIPs.find((i) => i.address.startsWith("192.168.")) ||
     allIPs.find((i) => i.address.startsWith("10.")) ||
@@ -67,9 +68,9 @@ server.listen(port, "0.0.0.0", () => {
 
   if (preferred) {
     console.log(
-      `\n✅ Use this on your phone: https://${preferred.address}:${port}\n`,
+      `\n✅ Use this on your phone: https://${preferred.address}:${port}/desktop.html\n`,
     );
   } else {
-    console.log(`App listening on port ${port}`);
+    console.log(`HTTPS listening on port ${port}`);
   }
 });
