@@ -9,6 +9,12 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
+# Local HTTPS certificates
+certs/
+*.pem
+*.key
+*.crt
+
 # Environment variables
 .env
 .env.local
