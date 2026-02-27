@@ -14,6 +14,13 @@
             font-family: system-ui;
             background: #111;
             color: white;
+            text-align: center;
+        }
+
+        #status {
+            font-size: 14px;
+            color: #aaa;
+            margin-bottom: 16px;
         }
 
         button {
@@ -24,10 +31,13 @@
 </head>
 
 <body>
-    <button id="enable">enable motion</button>
+    <div>
+        <div id="status">Press the button, then tilt your phone.</div>
+        <button id="enable">Enable Motion</button>
+    </div>
 
     <script src="/socket.io/socket.io.js"></script>
-    <!-- <script src="./controller.js"></script> -->
+    <script src="./controller.js"></script>
 </body>
 
 </html>
