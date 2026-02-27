@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tank Desktop</title>
+    <style>
+        html,
+        body {
+            height: 100%;
+            margin: 0;
+            overflow: hidden;
+            background: #111;
+        }
+
+        #tank {
+            position: fixed;
+            inset: 0;
+            width: 100vw;
+            height: 100vh;
+            display: block;
+        }
+
+        #overlay {
+            position: fixed;
+            top: 16px;
+            left: 16px;
+            z-index: 10;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 12px;
+            border-radius: 12px;
+            font-family: system-ui;
+            max-width: 320px;
+        }
+
+        #url {
+            color: #7df;
+            word-break: break-all;
+            display: block;
+            margin-bottom: 8px;
+            font-size: 12px;
+        }
+
+        #qr img {
+            display: block;
+            width: 180px;
+            height: 180px;
+        }
+
+        #status {
+            font-size: 12px;
+            margin-bottom: 6px;
+            color: #aaa;
+        }
+
+        #hide {
+            margin-top: 8px;
+            font-size: 12px;
+            padding: 6px 10px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="tank"></canvas>
+
+    <div id="overlay">
+        <div id="status">Waiting for socket ID…</div>
+        <a id="url" href="" target="_blank" rel="noreferrer"></a>
+        <div id="qr"></div>
+        <button id="hide">hide QR</button>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"
+        integrity="sha512-ZDSPMa/JM1D+7kdg2x3BsruQ6T/JpJo3jWDWkCZsP+5yVyp1KfESqLI+7RqB5k24F7p2cV7i2YHh/890y6P6Sw=="
+        crossorigin="anonymous"></script>
+    <script src="./desktop.js"></script>
+</body>
+
+</html>
