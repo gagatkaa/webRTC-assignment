@@ -22,7 +22,6 @@
             display: block;
         }
 
-      
         #overlay {
             position: fixed;
             top: 16px;
@@ -37,7 +36,7 @@
         }
 
         #url {
-            color: white;
+            color: #7df;
             word-break: break-all;
             display: block;
             margin-bottom: 8px;
@@ -48,6 +47,12 @@
             display: block;
             width: 180px;
             height: 180px;
+        }
+
+        #status {
+            font-size: 12px;
+            margin-bottom: 6px;
+            color: #aaa;
         }
 
         #hide {
@@ -63,6 +68,7 @@
     <canvas id="tank"></canvas>
 
     <div id="overlay">
+        <div id="status">Waiting for socket ID…</div>
         <a id="url" href="" target="_blank" rel="noreferrer"></a>
         <div id="qr"></div>
         <button id="hide">hide QR</button>
@@ -72,8 +78,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"
         integrity="sha512-ZDSPMa/JM1D+7kdg2x3BsruQ6T/JpJo3jWDWkCZsP+5yVyp1KfESqLI+7RqB5k24F7p2cV7i2YHh/890y6P6Sw=="
         crossorigin="anonymous"></script>
-
-    <!-- <script src="./desktop.js"></script> -->
+    <script src="./desktop.js"></script>
 </body>
 
 </html>
