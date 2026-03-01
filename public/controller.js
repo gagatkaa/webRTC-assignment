@@ -68,7 +68,7 @@ let aimX = 0;
 let aimY = 0;
 
 const SHOOT_EVERY_MS = 300;
-const MIN_AIM_MAG = 0.08; 
+const MIN_AIM_MAG = 0.08;
 let shootTimer = null;
 
 function setAim(x, y) {
@@ -110,7 +110,6 @@ enableBtn.addEventListener("click", async () => {
   noSleep.enable();
   log("Button clicked, protocol=" + location.protocol);
 
-
   if (
     typeof DeviceOrientationEvent !== "undefined" &&
     typeof DeviceOrientationEvent.requestPermission === "function"
@@ -149,8 +148,8 @@ function startMotion() {
     if (count <= 3)
       log(`event #${count}: γ=${e.gamma?.toFixed(1)} β=${e.beta?.toFixed(1)}`);
 
-    const gx = clamp((e.gamma ?? 0) / 30, -1, 1);
-    const gy = clamp((e.beta ?? 0) / 40, -1, 1);
+    const gx = clamp((e.gamma ?? 0) / 20, -1, 1);
+    const gy = clamp((e.beta ?? 0) / 25, -1, 1);
 
     sendMove(gx, gy);
 

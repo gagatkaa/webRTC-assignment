@@ -73,15 +73,15 @@ socket.on("update", (data) => {
   if (mag > 0.05) {
     const targetAimX = tankX / mag;
     const targetAimY = tankY / mag;
-    aimX += (targetAimX - aimX) * 0.15;
-    aimY += (targetAimY - aimY) * 0.15;
+    aimX += (targetAimX - aimX) * 0.35;
+    aimY += (targetAimY - aimY) * 0.35;
   }
 });
 
 // ── Bullets ─────────────────────────────────────────────────────────────────
 const bullets = [];
-const BULLET_SIZE = 10;
-const BULLET_SPEED = 14;
+const BULLET_SIZE = 20;
+const BULLET_SPEED = 18;
 const MUZZLE_LEN = 36;
 
 socket.on("shoot", (payload) => {
@@ -97,8 +97,8 @@ socket.on("shoot", (payload) => {
 
   const W = canvas.width;
   const H = canvas.height;
-  const cx = W / 2 + tankX * (W / 2 - 40);
-  const cy = H / 2 + tankY * (H / 2 - 40);
+  const cx = W / 2 + tankX * (W / 2 - 80);
+  const cy = H / 2 + tankY * (H / 2 - 80);
 
   bullets.push({
     x: cx + dirX * MUZZLE_LEN,
