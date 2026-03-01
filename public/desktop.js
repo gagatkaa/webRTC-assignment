@@ -61,9 +61,12 @@ socket.on("update", (data) => {
   if (typeof data.y === "number") tankY = data.y;
 
   const mag = Math.hypot(tankX, tankY);
-  if (mag > 0.15) {
-    aimX = tankX / mag;
-    aimY = tankY / mag;
+  if (mag > 0.05) {
+    const targetAimX = tankX / mag;
+    const targetAimY = tankY / mag;
+    // Smoothly lerp barrel toward movement direction
+    aimX += (targetAimX - aimX) * 0.15;
+    aimY += (targetAimY - aimY) * 0.15;
   }
 });
 
