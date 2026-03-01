@@ -24,7 +24,9 @@ io.on("connection", (socket) => {
   console.log("Socket connected", socket.id);
 
   socket.emit("your-id", socket.id);
-
+  socket.on("shoot", (targetId, payload) => {
+    io.to(targetId).emit("shoot", payload);
+  });
   socket.on("update", (targetSocketId, data) => {
     if (!clients[targetSocketId]) return;
 
