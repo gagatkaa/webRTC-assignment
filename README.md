@@ -85,7 +85,7 @@ Movement on the phone directly reshapes the digital space in real time using a W
 
 Next step will be technical planning and Week 1 setup, focusing first on signaling and the data channel before building the visual layer.
 
----
+
 
 ## Week 2 – Technical Setup and Getting the Connection Working
 

@@ -68,7 +68,7 @@ server.listen(port, "0.0.0.0", () => {
 
   if (preferred) {
     console.log(
-      `\n✅ Use this on your phone: https://${preferred.address}:${port}/desktop.html\n`,
+      `\n✅ Use this on your phone: https://${preferred.address}:${port}/controller.html\n`,
     );
   } else {
     console.log(`HTTPS listening on port ${port}`);
