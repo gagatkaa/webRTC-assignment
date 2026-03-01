@@ -53,7 +53,8 @@ window.addEventListener("resize", resize);
 resize();
 
 socket.on("update", (data) => {
-  phoneConnected = true; // ← tell the game the phone is connected
+  if (gameOver) return;
+  phoneConnected = true;
   if (typeof data.gx === "number") tankX = data.gx;
   if (typeof data.gy === "number") tankY = data.gy;
   if (typeof data.x === "number") tankX = data.x;
@@ -73,6 +74,8 @@ const BULLET_SPEED = 14;
 const MUZZLE_LEN = 36;
 
 socket.on("shoot", (payload) => {
+  // console.log("DESKTOP received shoot:", payload);
+  if (gameOver) return;
   let dirX = typeof payload?.dirX === "number" ? payload.dirX : aimX;
   let dirY = typeof payload?.dirY === "number" ? payload.dirY : aimY;
 
@@ -106,6 +109,7 @@ const SPAWN_MARGIN = 60;
 
 // ── Game state (MUST be outside draw so they don't reset every frame) ────────
 let score = 0;
+let lives = 5;
 let gameOver = false;
 let startTime = Date.now();
 let frameCount = 0;
@@ -154,8 +158,8 @@ function spawnEnemy() {
 
 function getSpawnInterval() {
   const elapsed = phoneConnected ? (Date.now() - startTime) / 1000 : 0;
-  const difficulty = Math.min(elapsed / 60, 1);
-  return 700 - difficulty * 500; // 700ms → 200ms over 60 seconds
+  const difficulty = Math.min(elapsed / 90, 1);
+  return 2000 - difficulty * 1500; // 2000ms → 500ms over 90 seconds
 }
 
 function scheduleSpawn() {
@@ -225,9 +229,12 @@ function draw() {
     e.x += (dx / mag) * e.speed;
     e.y += (dy / mag) * e.speed;
 
-    // enemy hits tank => game over
     if (hit(e.x, e.y, e.size, cx, cy, tankSize)) {
-      gameOver = true;
+      enemies.splice(i, 1);
+      lives -= 1;
+      if (lives <= 0) {
+        gameOver = true;
+      }
     }
   }
 
@@ -270,10 +277,30 @@ function draw() {
   ctx.stroke();
 
   // HUD
+  // HUD background bar
+  ctx.fillStyle = "rgba(0,0,0,0.45)";
+  ctx.fillRect(0, 0, W, 64);
+
+  // Score (center)
   ctx.fillStyle = "white";
-  ctx.font = "16px system-ui";
-  ctx.fillText(`score: ${score}`, 20, 30);
-  ctx.fillText(`enemies: ${enemies.length}`, 20, 52);
+  ctx.font = "bold 22px system-ui";
+  ctx.textAlign = "center";
+  ctx.fillText(`SCORE: ${score}`, W / 2, 38);
+
+  // Enemies (left)
+  ctx.font = "15px system-ui";
+  ctx.textAlign = "left";
+  ctx.fillText(`enemies: ${enemies.length}`, 20, 38);
+
+  // Lives (right) — hearts
+  ctx.textAlign = "right";
+  ctx.font = "22px system-ui";
+  const heartsDisplay =
+    "❤️".repeat(Math.max(0, lives)) + "🖤".repeat(Math.max(0, 5 - lives));
+  ctx.fillText(heartsDisplay, W - 20, 38);
+
+  // Reset alignment
+  ctx.textAlign = "left";
 
   // Show waiting message if phone not yet connected
   if (!phoneConnected) {
@@ -302,6 +329,7 @@ window.addEventListener("keydown", (e) => {
   if (e.key === "r" || e.key === "R") {
     // Reset game state without reloading the page (keeps socket + session alive)
     score = 0;
+    lives = 5;
     gameOver = false;
     startTime = Date.now();
     frameCount = 0;

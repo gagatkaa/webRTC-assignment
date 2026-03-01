@@ -40,6 +40,12 @@ io.on("connection", (socket) => {
 
   socket.on("shoot", (targetSessionId, payload) => {
     const target = sessionMap[targetSessionId];
+    // console.log(
+    //   "SHOOT → target socketId:",
+    //   target?.socketId,
+    //   "is that socket alive?",
+    //   !!io.sockets.sockets.get(target?.socketId),
+    // );
     if (!target) return;
     io.to(target.socketId).emit("shoot", payload);
   });

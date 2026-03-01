@@ -56,6 +56,7 @@ socket.on("disconnect", (reason) => {
 });
 // Existing movement send
 function sendMove(gx, gy) {
+  // console.log("sendMove → targetId:", targetId, "connected:", socket.connected);
   if (!targetId || !socket.connected) return;
   socket.emit("update", targetId, { gx, gy });
 }
@@ -149,8 +150,8 @@ function startMotion() {
     if (count <= 3)
       log(`event #${count}: γ=${e.gamma?.toFixed(1)} β=${e.beta?.toFixed(1)}`);
 
-    const gx = clamp((e.gamma ?? 0) / 90, -1, 1);
-    const gy = clamp((e.beta ?? 0) / 90, -1, 1);
+    const gx = clamp((e.gamma ?? 0) / 30, -1, 1);
+    const gy = clamp((e.beta ?? 0) / 40, -1, 1);
 
     // Movement stays the same
     sendMove(gx, gy);
