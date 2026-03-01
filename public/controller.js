@@ -23,7 +23,7 @@ if (!targetId) {
   enableBtn.disabled = true;
 }
 
-// ── 2. Socket ─────────────────────────────────────────────────────────────────
+// ── 2. Socket ────────────────────────────────────────────────────────────────
 const socket = io();
 
 socket.on("connect", () => {
@@ -37,14 +37,62 @@ socket.on("connect_error", (err) => {
 
 socket.on("disconnect", (reason) => {
   log("Socket disconnected: " + reason);
+  stopAutoFire();
 });
 
-function send(gx, gy) {
+// Existing movement send
+function sendMove(gx, gy) {
   if (!targetId || !socket.connected) return;
   socket.emit("update", targetId, { gx, gy });
 }
 
-// ── 3. Motion button ──────────────────────────────────────────────────────────
+// ── 2.5 Shooting state ───────────────────────────────────────────────────────
+// We keep the latest aim vector here.
+// Desktop can use it as "barrel direction".
+let aimX = 0;
+let aimY = 0;
+
+const SHOOT_EVERY_MS = 300;
+const MIN_AIM_MAG = 0.08; // deadzone so it doesn't shoot when nearly centered
+let shootTimer = null;
+
+function setAim(x, y) {
+  // Clamp and store
+  aimX = clamp(x, -1, 1);
+  aimY = clamp(y, -1, 1);
+}
+
+function maybeStartAutoFire() {
+  if (shootTimer) return;
+
+  shootTimer = setInterval(() => {
+    if (!targetId || !socket.connected) return;
+
+    const mag = Math.hypot(aimX, aimY);
+    if (mag < MIN_AIM_MAG) return;
+
+    // Normalize direction so bullet speed is consistent
+    const dirX = aimX / mag;
+    const dirY = aimY / mag;
+
+    socket.emit("shoot", targetId, {
+      dirX,
+      dirY,
+      t: Date.now(),
+    });
+  }, SHOOT_EVERY_MS);
+
+  log(`Auto-fire ✅ every ${SHOOT_EVERY_MS}ms`);
+}
+
+function stopAutoFire() {
+  if (!shootTimer) return;
+  clearInterval(shootTimer);
+  shootTimer = null;
+  log("Auto-fire stopped");
+}
+
+// ── 3. Motion button ─────────────────────────────────────────────────────────
 enableBtn.addEventListener("click", async () => {
   log("Button clicked, protocol=" + location.protocol);
 
@@ -72,18 +120,29 @@ enableBtn.addEventListener("click", async () => {
   }
 });
 
-// ── 4. Gyro ───────────────────────────────────────────────────────────────────
+// ── 4. Gyro ──────────────────────────────────────────────────────────────────
 function startMotion() {
   enableBtn.style.display = "none";
   statusEl.textContent = "📡 Tilt your phone to control the tank!";
   log("Listening for deviceorientation…");
+
+  // start auto-fire once input method is active
+  maybeStartAutoFire();
 
   let count = 0;
   window.addEventListener("deviceorientation", (e) => {
     count++;
     if (count <= 3)
       log(`event #${count}: γ=${e.gamma?.toFixed(1)} β=${e.beta?.toFixed(1)}`);
-    send(clamp((e.gamma ?? 0) / 90, -1, 1), clamp((e.beta ?? 0) / 90, -1, 1));
+
+    const gx = clamp((e.gamma ?? 0) / 90, -1, 1);
+    const gy = clamp((e.beta ?? 0) / 90, -1, 1);
+
+    // Movement stays the same
+    sendMove(gx, gy);
+
+    // Aim uses same vector (tank direction / barrel direction)
+    setAim(gx, gy);
   });
 
   setTimeout(() => {
@@ -94,11 +153,14 @@ function startMotion() {
   }, 2000);
 }
 
-// ── 5. Joystick fallback ──────────────────────────────────────────────────────
+// ── 5. Joystick fallback ─────────────────────────────────────────────────────
 function showJoystick() {
   enableBtn.style.display = "none";
   joystickEl.style.display = "flex";
   statusEl.textContent = "Drag the circle to control the tank.";
+
+  // start auto-fire once input method is active
+  maybeStartAutoFire();
 }
 
 const RADIUS = 60;
@@ -128,17 +190,26 @@ joystickEl.addEventListener(
       dy = (dy / dist) * RADIUS;
     }
     knobEl.style.transform = `translate(${dx}px, ${dy}px)`;
-    send(dx / RADIUS, dy / RADIUS);
+
+    const gx = dx / RADIUS;
+    const gy = dy / RADIUS;
+
+    // Movement stays the same
+    sendMove(gx, gy);
+
+    // Aim uses same vector
+    setAim(gx, gy);
   },
   { passive: false },
 );
 
 joystickEl.addEventListener("touchend", () => {
   knobEl.style.transform = "translate(0,0)";
-  send(0, 0);
+  sendMove(0, 0);
+  setAim(0, 0);
 });
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Helpers ──────────────────────────────────────────────────────────────────
 function clamp(v, min, max) {
   return Math.max(min, Math.min(max, v));
 }
