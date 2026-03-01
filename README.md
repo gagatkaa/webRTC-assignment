@@ -258,14 +258,14 @@ Loaded the game, no enemies. I asked why and Claude dug into the code.
 The issue was that all the key game state variables - `score`, `gameOver`, `startTime`, `frameCount`, `phoneConnected` - had accidentally been placed **inside** the `draw()` function. That means they were re-declared and reset to their defaults on every single frame, 60 times per second. The game was essentially resetting itself constantly.
 
 ```js
-// WRONG — inside draw(), so they reset every frame
+// WRONG - inside draw(), so they reset every frame
 let score = 0;
 let gameOver = false;
 let phoneConnected = false;
 ```
 
 ```js
-// CORRECT — declared once at the top of the file
+// CORRECT - declared once at the top of the file
 let score = 0;
 let gameOver = false;
 let phoneConnected = false;
@@ -327,3 +327,69 @@ function getSpawnInterval() {
 #### My reflection
 
 The ramp feels good in practice. The first 10-15 seconds give enough time to understand the controls before things get chaotic. Because `startTime` only ticks from when the phone connects, the difficulty clock does not start counting while you are still scanning the QR code.
+
+## Keeping the Phone Screen Awake
+
+During playtesting I noticed the phone screen would go to sleep mid-game, which stops the gyroscope and breaks the controls completely.
+
+### The Problem
+
+The OS auto-locks because the browser has no active touch input. The gyroscope runs silently in the background and the system does not consider that activity. This happens on both iOS and Android.
+
+### First Attempt - Wake Lock API
+
+My first approach was the native browser Wake Lock API:
+
+```js
+const wakeLock = await navigator.wakeLock.request("screen");
+```
+
+It works on modern Chrome and Safari 16.4+ but silently fails on older iOS versions with no fallback.
+
+### Final Solution - NoSleep.js
+
+---
+
+I switched to NoSleep.js, a library built specifically for this problem.
+
+- GitHub: https://github.com/richtr/NoSleep.js
+- CDN: https://cdnjs.cloudflare.com/ajax/libs/nosleep/0.12.0/NoSleep.min.js
+
+It works by playing a tiny invisible looping video in the background. Because a video is actively playing the OS never triggers auto-lock. It covers iOS Safari, Android Chrome, and all other major mobile browsers.
+
+#### Implementation
+
+Add the script in `controller.html`:
+
+```html
+<script src="https://cdnjs.cloudflare.com/ajax/libs/nosleep/0.12.0/NoSleep.min.js"></script>
+```
+
+Create the instance at the top of `controller.js`:
+
+```js
+const noSleep = new NoSleep();
+```
+
+Enable it inside the button click - browsers only allow this inside a real user gesture:
+
+```js
+enableBtn.addEventListener("click", async () => {
+  noSleep.enable();
+  // ... rest unchanged
+});
+```
+
+#### My reflection
+
+I first tried the Wake Lock API because it looked like the clean built in solution but it just did not work on my phone. Claude then suggested NoSleep.js which is a library that plays a tiny invisible video in the background to trick the OS into thinking something is active. A bit hacky but it works everywhere and that is what matters. I should have just started with that.
+
+## Next Step – Game States, Menu and Power-ups
+
+Now that the core gameplay is stable I want to make it feel like an actual game and not just a technical demo.
+
+First I want proper game states. Right now everything just loads straight into the canvas. I want a menu screen where the QR code is shown, then once the phone connects it transitions into the game, and when you die it shows a game over screen with the score and a restart option.
+
+Second I want power-ups. Random pick-ups that appear on screen that the tank collects by moving over them. Things like a speed boost, a shield, or faster shooting. They should disappear if you do not reach them in time. That should make each run feel different.
+
+And lastly some actual styling. The game looks very raw right now and I want to give it a proper visual identity with a cleaner HUD and visual feedback when you get hit or collect something.
