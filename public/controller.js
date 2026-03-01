@@ -36,7 +36,6 @@ const socket = io({ reconnection: true });
 
 socket.on("connect", () => {
   log("Socket ✅ " + socket.id);
-  // Re-register session every time we connect (including reconnects)
   socket.emit("register", sessionId);
   statusEl.textContent = "Connected! Press Enable Motion.";
 });
@@ -54,7 +53,9 @@ socket.on("disconnect", (reason) => {
   stopAutoFire();
   statusEl.textContent = "⚠️ Disconnected — reconnecting...";
 });
-// Existing movement send
+// ── Keep screen awake ─────────────────────────────────────────────────────
+const noSleep = new NoSleep();
+
 function sendMove(gx, gy) {
   // console.log("sendMove → targetId:", targetId, "connected:", socket.connected);
   if (!targetId || !socket.connected) return;
@@ -62,17 +63,15 @@ function sendMove(gx, gy) {
 }
 
 // ── 2.5 Shooting state ───────────────────────────────────────────────────────
-// We keep the latest aim vector here.
-// Desktop can use it as "barrel direction".
+
 let aimX = 0;
 let aimY = 0;
 
 const SHOOT_EVERY_MS = 300;
-const MIN_AIM_MAG = 0.08; // deadzone so it doesn't shoot when nearly centered
+const MIN_AIM_MAG = 0.08; 
 let shootTimer = null;
 
 function setAim(x, y) {
-  // Clamp and store
   aimX = clamp(x, -1, 1);
   aimY = clamp(y, -1, 1);
 }
@@ -86,7 +85,6 @@ function maybeStartAutoFire() {
     const mag = Math.hypot(aimX, aimY);
     if (mag < MIN_AIM_MAG) return;
 
-    // Normalize direction so bullet speed is consistent
     const dirX = aimX / mag;
     const dirY = aimY / mag;
 
@@ -109,7 +107,9 @@ function stopAutoFire() {
 
 // ── 3. Motion button ─────────────────────────────────────────────────────────
 enableBtn.addEventListener("click", async () => {
+  noSleep.enable();
   log("Button clicked, protocol=" + location.protocol);
+
 
   if (
     typeof DeviceOrientationEvent !== "undefined" &&
@@ -141,7 +141,6 @@ function startMotion() {
   statusEl.textContent = "📡 Tilt your phone to control the tank!";
   log("Listening for deviceorientation…");
 
-  // start auto-fire once input method is active
   maybeStartAutoFire();
 
   let count = 0;
@@ -153,10 +152,8 @@ function startMotion() {
     const gx = clamp((e.gamma ?? 0) / 30, -1, 1);
     const gy = clamp((e.beta ?? 0) / 40, -1, 1);
 
-    // Movement stays the same
     sendMove(gx, gy);
 
-    // Aim uses same vector (tank direction / barrel direction)
     setAim(gx, gy);
   });
 
@@ -174,7 +171,6 @@ function showJoystick() {
   joystickEl.style.display = "flex";
   statusEl.textContent = "Drag the circle to control the tank.";
 
-  // start auto-fire once input method is active
   maybeStartAutoFire();
 }
 
@@ -209,10 +205,8 @@ joystickEl.addEventListener(
     const gx = dx / RADIUS;
     const gy = dy / RADIUS;
 
-    // Movement stays the same
     sendMove(gx, gy);
 
-    // Aim uses same vector
     setAim(gx, gy);
   },
   { passive: false },
