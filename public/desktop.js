@@ -1,5 +1,7 @@
 const socket = io({ reconnection: true });
 
+console.log("hideBtn:", document.getElementById("hide"));
+
 // Stable session ID for the desktop too
 let sessionId = localStorage.getItem("desktopSessionId");
 if (!sessionId) {
@@ -10,6 +12,14 @@ if (!sessionId) {
 socket.on("connect", () => {
   socket.emit("register", sessionId);
 });
+
+const bgMusic = new Audio("/music.mp3");
+bgMusic.loop = true;
+bgMusic.volume = 0.4;
+bgMusic.addEventListener("error", (e) =>
+  console.error("Music error:", e, bgMusic.error),
+);
+console.log("Music src:", bgMusic.src);
 
 const statusEl = document.getElementById("status");
 const urlEl = document.getElementById("url");
@@ -34,6 +44,7 @@ socket.on("your-id", (myId) => {
 
 hideBtn.addEventListener("click", () => {
   document.getElementById("overlay").style.display = "none";
+  bgMusic.play().catch((err) => console.error("Music failed:", err));
 });
 
 // ── Canvas / tank rendering ──────────────────────────────────────────────────
@@ -325,6 +336,9 @@ function draw() {
 }
 window.addEventListener("keydown", (e) => {
   if (e.key === "r" || e.key === "R") {
+    e.preventDefault();
+    bgMusic.play().catch(() => {});
+    if (bgMusic.paused) bgMusic.play().catch(() => {});
     score = 0;
     lives = 5;
     gameOver = false;
