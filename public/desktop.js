@@ -20,7 +20,6 @@ const ctx = canvas.getContext("2d");
 
 // ── QR / overlay ────────────────────────────────────────────────────────────
 socket.on("your-id", (myId) => {
-  // Use the stable sessionId so QR stays valid across reconnects
   const controllerURL = `${location.protocol}//${location.host}/controller.html?target=${sessionId}`;
 
   statusEl.textContent = "Scan to connect your phone:";
@@ -41,7 +40,6 @@ hideBtn.addEventListener("click", () => {
 let tankX = 0;
 let tankY = 0;
 
-// last aim direction so barrel doesn't glitch when centered
 let aimX = 1;
 let aimY = 0;
 
@@ -64,7 +62,6 @@ socket.on("update", (data) => {
   if (mag > 0.05) {
     const targetAimX = tankX / mag;
     const targetAimY = tankY / mag;
-    // Smoothly lerp barrel toward movement direction
     aimX += (targetAimX - aimX) * 0.15;
     aimY += (targetAimY - aimY) * 0.15;
   }
@@ -110,7 +107,7 @@ const ENEMY_SIZE_MIN = 18;
 const ENEMY_SIZE_MAX = 34;
 const SPAWN_MARGIN = 60;
 
-// ── Game state (MUST be outside draw so they don't reset every frame) ────────
+// ── Game state ────────
 let score = 0;
 let lives = 5;
 let gameOver = false;
@@ -162,7 +159,7 @@ function spawnEnemy() {
 function getSpawnInterval() {
   const elapsed = phoneConnected ? (Date.now() - startTime) / 1000 : 0;
   const difficulty = Math.min(elapsed / 90, 1);
-  return 2000 - difficulty * 1500; // 2000ms → 500ms over 90 seconds
+  return 2000 - difficulty * 1500;
 }
 
 function scheduleSpawn() {
@@ -280,7 +277,6 @@ function draw() {
   ctx.stroke();
 
   // HUD
-  // HUD background bar
   ctx.fillStyle = "rgba(0,0,0,0.45)";
   ctx.fillRect(0, 0, W, 64);
 
@@ -305,7 +301,6 @@ function draw() {
   // Reset alignment
   ctx.textAlign = "left";
 
-  // Show waiting message if phone not yet connected
   if (!phoneConnected) {
     ctx.fillStyle = "rgba(0,0,0,0.45)";
     ctx.fillRect(0, 0, W, H);
@@ -330,7 +325,6 @@ function draw() {
 }
 window.addEventListener("keydown", (e) => {
   if (e.key === "r" || e.key === "R") {
-    // Reset game state without reloading the page (keeps socket + session alive)
     score = 0;
     lives = 5;
     gameOver = false;

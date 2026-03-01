@@ -17,9 +17,7 @@ const server = https.createServer(options, app);
 const io = new Server(server);
 const port = process.env.PORT || 3000;
 
-const clients = {};
-
-const sessionMap = {}; // sessionId -> { socketId, x, y, gx, gy }
+const sessionMap = {}; 
 
 io.on("connection", (socket) => {
   let sessionId = null;
@@ -27,15 +25,15 @@ io.on("connection", (socket) => {
   socket.on("register", (clientSessionId) => {
     sessionId = clientSessionId;
 
-    // Restore or create session
+    
     if (!sessionMap[sessionId]) {
       sessionMap[sessionId] = { socketId: socket.id, x: 0, y: 0 };
     } else {
-      sessionMap[sessionId].socketId = socket.id; // update to new socket
+      sessionMap[sessionId].socketId = socket.id; 
     }
 
     console.log(`Session registered: ${sessionId} → socket ${socket.id}`);
-    socket.emit("your-id", sessionId); // send back stable sessionId
+    socket.emit("your-id", sessionId); 
   });
 
   socket.on("shoot", (targetSessionId, payload) => {
@@ -67,7 +65,6 @@ io.on("connection", (socket) => {
 
   socket.on("disconnect", () => {
     console.log(`Socket disconnected: ${socket.id} (session: ${sessionId})`);
-    // Don't delete session — just let it linger for reconnection
   });
 });
 
