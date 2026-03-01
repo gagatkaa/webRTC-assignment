@@ -17,28 +17,54 @@ const server = https.createServer(options, app);
 const io = new Server(server);
 const port = process.env.PORT || 3000;
 
-const clients = {};
+const sessionMap = {}; 
 
 io.on("connection", (socket) => {
-  clients[socket.id] = { id: socket.id, x: 0, y: 0 };
-  console.log("Socket connected", socket.id);
+  let sessionId = null;
 
-  socket.emit("your-id", socket.id);
+  socket.on("register", (clientSessionId) => {
+    sessionId = clientSessionId;
 
-  socket.on("update", (targetSocketId, data) => {
-    if (!clients[targetSocketId]) return;
+    
+    if (!sessionMap[sessionId]) {
+      sessionMap[sessionId] = { socketId: socket.id, x: 0, y: 0 };
+    } else {
+      sessionMap[sessionId].socketId = socket.id; 
+    }
 
-    if (typeof data?.x === "number") clients[socket.id].x = data.x;
-    if (typeof data?.y === "number") clients[socket.id].y = data.y;
-    if (typeof data?.gx === "number") clients[socket.id].gx = data.gx;
-    if (typeof data?.gy === "number") clients[socket.id].gy = data.gy;
+    console.log(`Session registered: ${sessionId} → socket ${socket.id}`);
+    socket.emit("your-id", sessionId); 
+  });
 
-    io.to(targetSocketId).emit("update", data);
+  socket.on("shoot", (targetSessionId, payload) => {
+    const target = sessionMap[targetSessionId];
+    // console.log(
+    //   "SHOOT → target socketId:",
+    //   target?.socketId,
+    //   "is that socket alive?",
+    //   !!io.sockets.sockets.get(target?.socketId),
+    // );
+    if (!target) return;
+    io.to(target.socketId).emit("shoot", payload);
+  });
+
+  socket.on("update", (targetSessionId, data) => {
+    const target = sessionMap[targetSessionId];
+    if (!target) return;
+
+    const me = sessionMap[sessionId];
+    if (me) {
+      if (typeof data?.x === "number") me.x = data.x;
+      if (typeof data?.y === "number") me.y = data.y;
+      if (typeof data?.gx === "number") me.gx = data.gx;
+      if (typeof data?.gy === "number") me.gy = data.gy;
+    }
+
+    io.to(target.socketId).emit("update", data);
   });
 
   socket.on("disconnect", () => {
-    console.log("Socket disconnected", socket.id);
-    delete clients[socket.id];
+    console.log(`Socket disconnected: ${socket.id} (session: ${sessionId})`);
   });
 });
 

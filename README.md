@@ -85,8 +85,6 @@ Movement on the phone directly reshapes the digital space in real time using a W
 
 Next step will be technical planning and Week 1 setup, focusing first on signaling and the data channel before building the visual layer.
 
-
-
 ## Week 2 – Technical Setup and Getting the Connection Working
 
 This week was fully focused on getting the actual technical foundation working:
@@ -203,3 +201,195 @@ Binding to `"0.0.0.0"` is important - without it the server only accepts
 connections from the same machine and the phone cannot reach it.
 
 ---
+
+## Shooting and Enemy System
+
+Two days after getting the connection stable, I was testing the movement and saw the tank square actually responding to the phone in real time. That moment made me want to turn it into something more. Instead of just moving a shape around I decided to make a proper shooter - a tank the player controls, with enemies spawning from the edges and chasing its position. Shoot them before they reach you.
+
+That decision shaped everything that followed.
+
+---
+
+### Adding Shooting
+
+The idea was simple: the tank shoots automatically and continuously in whatever direction it is currently pointing. No button needed - the barrel just keeps firing.
+
+#### My prompt
+
+```
+I want to add shooting to the game, the bullet should come out of the barrel
+and go in the direction the tank is aiming.
+```
+
+#### AI response summary
+
+Claude suggested adding a `shoot` socket event that fires on an interval rather than on button press. The server forwards it to the desktop, and the desktop creates a bullet object with a velocity based on the current aim direction. The game loop then moves and draws bullets each frame.
+
+#### The problem
+
+Everything looked correct but no bullets appeared at all. I assumed the velocity calculation was wrong or the draw loop was not rendering them. After going back and forth I realised I had forgotten to wire up the `socket.on("shoot")` listener properly on the desktop side. The server was forwarding the event correctly but the desktop was not receiving it.
+
+#### My reflection
+
+Classic three-point socket bug. Sender, relay, receiver - all three need to be wired. Missing one of them means the feature silently does nothing. Next time I will trace the full event path before assuming the logic is broken.
+
+---
+
+### Adding Enemies
+
+Once shooting worked I wanted enemies. Simple coloured squares that spawn at the edges of the screen and chase the tank. Bullets destroy them, score goes up. If one reaches the tank, game over.
+
+#### My prompt
+
+```
+write me a simple logic to add enemies, simple squares that follow the square
+player origin and the player needs to shoot them down and if the square
+gets too close its game over
+```
+
+#### AI response summary
+
+Claude added an `enemies` array, a `spawnEnemy()` function that picks a random screen edge, and movement logic inside `draw()` that nudges each enemy toward the tank position each frame. Collision is a simple square-vs-square overlap check.
+
+#### The problem - nothing appearing again
+
+Loaded the game, no enemies. I asked why and Claude dug into the code.
+
+The issue was that all the key game state variables - `score`, `gameOver`, `startTime`, `frameCount`, `phoneConnected` - had accidentally been placed **inside** the `draw()` function. That means they were re-declared and reset to their defaults on every single frame, 60 times per second. The game was essentially resetting itself constantly.
+
+```js
+// WRONG - inside draw(), so they reset every frame
+let score = 0;
+let gameOver = false;
+let phoneConnected = false;
+```
+
+```js
+// CORRECT - declared once at the top of the file
+let score = 0;
+let gameOver = false;
+let phoneConnected = false;
+```
+
+#### My reflection
+
+I had been following instructions across multiple messages and pasting code without thinking carefully about where it landed. The rule is simple: anything that needs to survive between frames lives outside `draw()`. Only temporary per-frame calculations go inside.
+
+---
+
+### Enemies Should Wait for the Phone
+
+Even after fixing that, enemies spawned the moment the page loaded - before the phone was even connected. By the time a player scanned the QR code the tank was already surrounded.
+
+#### Steps
+
+I added a `phoneConnected` boolean flag, set to `false` at startup. The spawn scheduler checks the flag before spawning anything. The `socket.on("update")` handler - which receives movement data from the phone - sets it to `true` on the first message. A waiting overlay was also added so the screen does not just look broken before connection.
+
+```js
+socket.on("update", (data) => {
+  phoneConnected = true; // game starts from first phone input
+  ...
+});
+```
+
+#### My reflection
+
+Using the first `update` event as the game start trigger felt right. No extra handshake needed - the moment the player moves the phone, the game begins. It also means the difficulty timer only starts from that moment, which matters for the next thing I added.
+
+---
+
+### Difficulty Scaling
+
+With enemies working I wanted the game to get harder over time rather than staying the same pace throughout.
+
+#### What I implemented
+
+I wanted enemies to start slow and get faster the longer you play. I added a difficulty multiplier that grows from 0 to 1 over the first 60 seconds and feeds into both the enemy speed and the spawn interval.
+
+```js
+const elapsed = phoneConnected ? (Date.now() - startTime) / 1000 : 0;
+const difficulty = Math.min(elapsed / 60, 1);
+const speedBoost = difficulty * 3;
+
+speed: rand(ENEMY_SPEED_MIN + speedBoost, ENEMY_SPEED_MAX + speedBoost),
+```
+
+For the spawn rate I replaced the fixed `setInterval` with a `setTimeout` that recalculates the interval each time, so it gets shorter as difficulty increases.
+
+```js
+function getSpawnInterval() {
+  const elapsed = phoneConnected ? (Date.now() - startTime) / 1000 : 0;
+  const difficulty = Math.min(elapsed / 60, 1);
+  return 700 - difficulty * 500;
+}
+```
+
+#### My reflection
+
+The ramp feels good in practice. The first 10-15 seconds give enough time to understand the controls before things get chaotic. Because `startTime` only ticks from when the phone connects, the difficulty clock does not start counting while you are still scanning the QR code.
+
+## Keeping the Phone Screen Awake
+
+During playtesting I noticed the phone screen would go to sleep mid-game, which stops the gyroscope and breaks the controls completely.
+
+### The Problem
+
+The OS auto-locks because the browser has no active touch input. The gyroscope runs silently in the background and the system does not consider that activity. This happens on both iOS and Android.
+
+### First Attempt - Wake Lock API
+
+My first approach was the native browser Wake Lock API:
+
+```js
+const wakeLock = await navigator.wakeLock.request("screen");
+```
+
+It works on modern Chrome and Safari 16.4+ but silently fails on older iOS versions with no fallback.
+
+### Final Solution - NoSleep.js
+
+---
+
+I switched to NoSleep.js, a library built specifically for this problem.
+
+- GitHub: https://github.com/richtr/NoSleep.js
+- CDN: https://cdnjs.cloudflare.com/ajax/libs/nosleep/0.12.0/NoSleep.min.js
+
+It works by playing a tiny invisible looping video in the background. Because a video is actively playing the OS never triggers auto-lock. It covers iOS Safari, Android Chrome, and all other major mobile browsers.
+
+#### Implementation
+
+Add the script in `controller.html`:
+
+```html
+<script src="https://cdnjs.cloudflare.com/ajax/libs/nosleep/0.12.0/NoSleep.min.js"></script>
+```
+
+Create the instance at the top of `controller.js`:
+
+```js
+const noSleep = new NoSleep();
+```
+
+Enable it inside the button click - browsers only allow this inside a real user gesture:
+
+```js
+enableBtn.addEventListener("click", async () => {
+  noSleep.enable();
+  // ... rest unchanged
+});
+```
+
+#### My reflection
+
+I first tried the Wake Lock API because it looked like the clean built in solution but it just did not work on my phone. Claude then suggested NoSleep.js which is a library that plays a tiny invisible video in the background to trick the OS into thinking something is active. A bit hacky but it works everywhere and that is what matters. I should have just started with that.
+
+## Next Step – Game States, Menu and Power-ups
+
+Now that the core gameplay is stable I want to make it feel like an actual game and not just a technical demo.
+
+First I want proper game states. Right now everything just loads straight into the canvas. I want a menu screen where the QR code is shown, then once the phone connects it transitions into the game, and when you die it shows a game over screen with the score and a restart option.
+
+Second I want power-ups. Random pick-ups that appear on screen that the tank collects by moving over them. Things like a speed boost, a shield, or faster shooting. They should disappear if you do not reach them in time. That should make each run feel different.
+
+And lastly some actual styling. The game looks very raw right now and I want to give it a proper visual identity with a cleaner HUD and visual feedback when you get hit or collect something.
