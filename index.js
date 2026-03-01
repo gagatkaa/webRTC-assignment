@@ -19,28 +19,49 @@ const port = process.env.PORT || 3000;
 
 const clients = {};
 
+const sessionMap = {}; // sessionId -> { socketId, x, y, gx, gy }
+
 io.on("connection", (socket) => {
-  clients[socket.id] = { id: socket.id, x: 0, y: 0 };
-  console.log("Socket connected", socket.id);
+  let sessionId = null;
 
-  socket.emit("your-id", socket.id);
-  socket.on("shoot", (targetId, payload) => {
-    io.to(targetId).emit("shoot", payload);
+  socket.on("register", (clientSessionId) => {
+    sessionId = clientSessionId;
+
+    // Restore or create session
+    if (!sessionMap[sessionId]) {
+      sessionMap[sessionId] = { socketId: socket.id, x: 0, y: 0 };
+    } else {
+      sessionMap[sessionId].socketId = socket.id; // update to new socket
+    }
+
+    console.log(`Session registered: ${sessionId} → socket ${socket.id}`);
+    socket.emit("your-id", sessionId); // send back stable sessionId
   });
-  socket.on("update", (targetSocketId, data) => {
-    if (!clients[targetSocketId]) return;
 
-    if (typeof data?.x === "number") clients[socket.id].x = data.x;
-    if (typeof data?.y === "number") clients[socket.id].y = data.y;
-    if (typeof data?.gx === "number") clients[socket.id].gx = data.gx;
-    if (typeof data?.gy === "number") clients[socket.id].gy = data.gy;
+  socket.on("shoot", (targetSessionId, payload) => {
+    const target = sessionMap[targetSessionId];
+    if (!target) return;
+    io.to(target.socketId).emit("shoot", payload);
+  });
 
-    io.to(targetSocketId).emit("update", data);
+  socket.on("update", (targetSessionId, data) => {
+    const target = sessionMap[targetSessionId];
+    if (!target) return;
+
+    const me = sessionMap[sessionId];
+    if (me) {
+      if (typeof data?.x === "number") me.x = data.x;
+      if (typeof data?.y === "number") me.y = data.y;
+      if (typeof data?.gx === "number") me.gx = data.gx;
+      if (typeof data?.gy === "number") me.gy = data.gy;
+    }
+
+    io.to(target.socketId).emit("update", data);
   });
 
   socket.on("disconnect", () => {
-    console.log("Socket disconnected", socket.id);
-    delete clients[socket.id];
+    console.log(`Socket disconnected: ${socket.id} (session: ${sessionId})`);
+    // Don't delete session — just let it linger for reconnection
   });
 });
 

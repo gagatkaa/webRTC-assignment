@@ -1,4 +1,15 @@
-const socket = io();
+const socket = io({ reconnection: true });
+
+// Stable session ID for the desktop too
+let sessionId = localStorage.getItem("desktopSessionId");
+if (!sessionId) {
+  sessionId = crypto.randomUUID();
+  localStorage.setItem("desktopSessionId", sessionId);
+}
+
+socket.on("connect", () => {
+  socket.emit("register", sessionId);
+});
 
 const statusEl = document.getElementById("status");
 const urlEl = document.getElementById("url");
@@ -9,7 +20,8 @@ const ctx = canvas.getContext("2d");
 
 // ── QR / overlay ────────────────────────────────────────────────────────────
 socket.on("your-id", (myId) => {
-  const controllerURL = `${location.protocol}//${location.host}/controller.html?target=${myId}`;
+  // Use the stable sessionId so QR stays valid across reconnects
+  const controllerURL = `${location.protocol}//${location.host}/controller.html?target=${sessionId}`;
 
   statusEl.textContent = "Scan to connect your phone:";
   urlEl.textContent = controllerURL;
@@ -280,11 +292,27 @@ function draw() {
     ctx.fillText("GAME OVER", W / 2 - 150, H / 2);
     ctx.font = "18px system-ui";
     ctx.fillText(`final score: ${score}`, W / 2 - 60, H / 2 + 36);
-    ctx.fillText("refresh to restart", W / 2 - 85, H / 2 + 66);
+    ctx.fillText("Press R to restart", W / 2 - 85, H / 2 + 66);
     return;
   }
 
   requestAnimationFrame(draw);
 }
+window.addEventListener("keydown", (e) => {
+  if (e.key === "r" || e.key === "R") {
+    // Reset game state without reloading the page (keeps socket + session alive)
+    score = 0;
+    gameOver = false;
+    startTime = Date.now();
+    frameCount = 0;
+    bullets.length = 0;
+    enemies.length = 0;
+    tankX = 0;
+    tankY = 0;
+    aimX = 1;
+    aimY = 0;
+    requestAnimationFrame(draw);
+  }
+});
 
 draw();

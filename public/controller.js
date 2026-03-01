@@ -23,12 +23,26 @@ if (!targetId) {
   enableBtn.disabled = true;
 }
 
-// ── 2. Socket ────────────────────────────────────────────────────────────────
-const socket = io();
+// ── 2. Session ID (persists across reconnects — no re-scan needed) ────────────
+let sessionId = localStorage.getItem("controllerSessionId");
+if (!sessionId) {
+  sessionId = crypto.randomUUID();
+  localStorage.setItem("controllerSessionId", sessionId);
+}
+log("Session ID: " + sessionId);
+
+// ── 3. Socket ────────────────────────────────────────────────────────────────
+const socket = io({ reconnection: true });
 
 socket.on("connect", () => {
   log("Socket ✅ " + socket.id);
+  // Re-register session every time we connect (including reconnects)
+  socket.emit("register", sessionId);
   statusEl.textContent = "Connected! Press Enable Motion.";
+});
+
+socket.on("your-id", (confirmedId) => {
+  log("Session confirmed by server ✅ " + confirmedId);
 });
 
 socket.on("connect_error", (err) => {
@@ -38,8 +52,8 @@ socket.on("connect_error", (err) => {
 socket.on("disconnect", (reason) => {
   log("Socket disconnected: " + reason);
   stopAutoFire();
+  statusEl.textContent = "⚠️ Disconnected — reconnecting...";
 });
-
 // Existing movement send
 function sendMove(gx, gy) {
   if (!targetId || !socket.connected) return;
