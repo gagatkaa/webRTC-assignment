@@ -15,8 +15,8 @@ function log(msg) {
 const params = new URLSearchParams(location.search);
 const targetId = params.get("target") || params.get("id");
 
-log("Protocol: " + location.protocol);
-log("Target: " + (targetId || "MISSING ⚠️"));
+// log("Protocol: " + location.protocol);
+// log("Target: " + (targetId || "MISSING ⚠️"));
 
 if (!targetId) {
   statusEl.textContent = "⚠️ No target ID — scan the QR from the desktop.";
@@ -29,27 +29,27 @@ if (!sessionId) {
   sessionId = crypto.randomUUID();
   localStorage.setItem("controllerSessionId", sessionId);
 }
-log("Session ID: " + sessionId);
+// log("Session ID: " + sessionId);
 
 // ── 3. Socket ────────────────────────────────────────────────────────────────
 const socket = io({ reconnection: true });
 
 socket.on("connect", () => {
-  log("Socket ✅ " + socket.id);
+  // log("Socket ✅ " + socket.id);
   socket.emit("register", sessionId);
   statusEl.textContent = "Connected! Press Enable Motion.";
 });
 
 socket.on("your-id", (confirmedId) => {
-  log("Session confirmed by server ✅ " + confirmedId);
+  // log("Session confirmed by server ✅ " + confirmedId);
 });
 
 socket.on("connect_error", (err) => {
-  log("Socket error ❌ " + err.message);
+  // log("Socket error ❌ " + err.message);
 });
 
 socket.on("disconnect", (reason) => {
-  log("Socket disconnected: " + reason);
+  // log("Socket disconnected: " + reason);
   stopAutoFire();
   statusEl.textContent = "⚠️ Disconnected — reconnecting...";
 });
@@ -95,14 +95,14 @@ function maybeStartAutoFire() {
     });
   }, SHOOT_EVERY_MS);
 
-  log(`Auto-fire ✅ every ${SHOOT_EVERY_MS}ms`);
+  // log(`Auto-fire ✅ every ${SHOOT_EVERY_MS}ms`);
 }
 
 function stopAutoFire() {
   if (!shootTimer) return;
   clearInterval(shootTimer);
   shootTimer = null;
-  log("Auto-fire stopped");
+  // log("Auto-fire stopped");
 }
 
 // ── 3. Motion button ─────────────────────────────────────────────────────────
@@ -114,14 +114,14 @@ enableBtn.addEventListener("click", async () => {
     typeof DeviceOrientationEvent !== "undefined" &&
     typeof DeviceOrientationEvent.requestPermission === "function"
   ) {
-    log("Requesting iOS permission…");
+    // log("Requesting iOS permission…");
     try {
       const perm = await DeviceOrientationEvent.requestPermission();
-      log("Permission: " + perm);
+      // log("Permission: " + perm);
       if (perm === "granted") {
         startMotion();
       } else {
-        log("Denied — showing joystick.");
+        // log("Denied — showing joystick.");
         showJoystick();
       }
     } catch (e) {
@@ -137,39 +137,33 @@ enableBtn.addEventListener("click", async () => {
 // ── 4. Gyro ──────────────────────────────────────────────────────────────────
 function startMotion() {
   enableBtn.style.display = "none";
-  statusEl.textContent = "📡 Tilt your phone to control the tank!";
-  log("Listening for deviceorientation…");
+  statusEl.textContent = "📡 Hold phone normally then tilt to aim!";
 
   maybeStartAutoFire();
+  showJoystick();
 
-  let count = 0;
+  let baseGamma = null;
+  let baseBeta = null;
+
   window.addEventListener("deviceorientation", (e) => {
-    count++;
-    if (count <= 3)
-      log(`event #${count}: γ=${e.gamma?.toFixed(1)} β=${e.beta?.toFixed(1)}`);
+    // Capture resting position on first event
+    if (baseGamma === null) {
+      baseGamma = e.gamma ?? 0;
+      baseBeta = e.beta ?? 0;
+      log(`Calibrated: γ=${baseGamma.toFixed(1)} β=${baseBeta.toFixed(1)}`);
+    }
 
-    const gx = clamp((e.gamma ?? 0) / 20, -1, 1);
-    const gy = clamp((e.beta ?? 0) / 25, -1, 1);
-
-    sendMove(gx, gy);
+    // Aim relative to resting position
+    const gx = clamp((e.gamma - baseGamma) / 30, -1, 1);
+    const gy = clamp((e.beta - baseBeta) / 30, -1, 1);
 
     setAim(gx, gy);
   });
-
-  setTimeout(() => {
-    if (count === 0) {
-      log("⚠️ No events after 2s — showing joystick as fallback.");
-      showJoystick();
-    }
-  }, 2000);
 }
 
 // ── 5. Joystick fallback ─────────────────────────────────────────────────────
 function showJoystick() {
-  enableBtn.style.display = "none";
   joystickEl.style.display = "flex";
-  statusEl.textContent = "Drag the circle to control the tank.";
-
   maybeStartAutoFire();
 }
 
@@ -206,7 +200,7 @@ joystickEl.addEventListener(
 
     sendMove(gx, gy);
 
-    setAim(gx, gy);
+    // setAim(gx, gy);
   },
   { passive: false },
 );
@@ -214,7 +208,7 @@ joystickEl.addEventListener(
 joystickEl.addEventListener("touchend", () => {
   knobEl.style.transform = "translate(0,0)";
   sendMove(0, 0);
-  setAim(0, 0);
+  // setAim(0, 0);
 });
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
