@@ -17,7 +17,7 @@ const server = https.createServer(options, app);
 const io = new Server(server);
 const port = process.env.PORT || 3000;
 
-const sessionMap = {}; 
+const sessionMap = {};
 
 io.on("connection", (socket) => {
   let sessionId = null;
@@ -25,25 +25,50 @@ io.on("connection", (socket) => {
   socket.on("register", (clientSessionId) => {
     sessionId = clientSessionId;
 
-    
     if (!sessionMap[sessionId]) {
       sessionMap[sessionId] = { socketId: socket.id, x: 0, y: 0 };
     } else {
-      sessionMap[sessionId].socketId = socket.id; 
+      sessionMap[sessionId].socketId = socket.id;
     }
 
     console.log(`Session registered: ${sessionId} → socket ${socket.id}`);
-    socket.emit("your-id", sessionId); 
+    socket.emit("your-id", sessionId);
   });
+
+
+  socket.on("peerOffer", (targetSessionId, offer) => {
+    const target = sessionMap[targetSessionId];
+    if (!target) return;
+    console.log(
+      `peerOffer: ${sessionId} → ${targetSessionId} (socket ${target.socketId})`,
+    );
+    io.to(target.socketId).emit("peerOffer", targetSessionId, offer, socket.id);
+  });
+
+  socket.on("peerAnswer", (targetRawSocketId, answer) => {
+    console.log(`peerAnswer: relaying to raw socket ${targetRawSocketId}`);
+    io.to(targetRawSocketId).emit(
+      "peerAnswer",
+      targetRawSocketId,
+      answer,
+      socket.id,
+    );
+  });
+
+  socket.on("peerIce", (targetId, candidate) => {
+    const bySession = sessionMap[targetId];
+    if (bySession) {
+      io.to(bySession.socketId).emit("peerIce", targetId, candidate, socket.id);
+    } else {
+      io.to(targetId).emit("peerIce", targetId, candidate, socket.id);
+    }
+  });
+
+  // ── Legacy socket fallback (kept for safety during transition) ──────────
+  // These will only fire if WebRTC data channel is not yet open
 
   socket.on("shoot", (targetSessionId, payload) => {
     const target = sessionMap[targetSessionId];
-    // console.log(
-    //   "SHOOT → target socketId:",
-    //   target?.socketId,
-    //   "is that socket alive?",
-    //   !!io.sockets.sockets.get(target?.socketId),
-    // );
     if (!target) return;
     io.to(target.socketId).emit("shoot", payload);
   });

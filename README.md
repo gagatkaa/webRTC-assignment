@@ -384,9 +384,160 @@ enableBtn.addEventListener("click", async () => {
 
 I first tried the Wake Lock API because it looked like the clean built in solution but it just did not work on my phone. Claude then suggested NoSleep.js which is a library that plays a tiny invisible video in the background to trick the OS into thinking something is active. A bit hacky but it works everywhere and that is what matters. I should have just started with that.
 
+## Next Step - WebRTC
+
+At this point the game was fully working over Socket.io but that meant Socket.io was being used for everything, including the actual game controls. Every shoot and update event was bouncing through the server instead of going directly between the phone and the desktop. The assignment explicitly requires WebRTC data channels for the controls, with WebSockets only allowed for signaling. Before moving on to polishing the game I needed to go back and fix the foundation first.
+
+## Week 3 – Implementing WebRTC
+
+I asked Claude what the steps were to properly implement WebRTC peer connection in the project, and it walked me through the full process.
+
+### Understanding the Architecture First
+
+Before touching any code, Claude explained how WebRTC signaling actually works and what role each part plays:
+
+- **Socket.io stays** but only for the handshake. It relays three message types: `peerOffer`, `peerAnswer`, and `peerIce`. After that it sits idle.
+- **RTCPeerConnection** is the native browser API that manages the peer-to-peer connection.
+- **RTCDataChannel** is the channel that replaces the socket for actual game data. Once open, `shoot` and `update` messages travel directly phone to desktop with no server in the middle.
+- **Controller = offerer** because it already knows the desktop session ID from the QR URL, so it naturally initiates. Desktop just waits and answers.
+
+I had assumed WebRTC would need a lot of new infrastructure but seeing it broken down like this made it clear the server barely changes. Almost all the work is on the client side.
+
+## What Changed in Each File
+
+### index.js
+
+The server got three new relay events, following the same pattern the teacher demonstrated:
+
+```js
+socket.on("peerOffer", (targetSessionId, offer) => {
+  const target = sessionMap[targetSessionId];
+  io.to(target.socketId).emit("peerOffer", targetSessionId, offer, socket.id);
+});
+
+socket.on("peerAnswer", (targetRawSocketId, answer) => {
+  io.to(targetRawSocketId).emit(
+    "peerAnswer",
+    targetRawSocketId,
+    answer,
+    socket.id,
+  );
+});
+
+socket.on("peerIce", (targetId, candidate) => {
+  const bySession = sessionMap[targetId];
+  if (bySession) {
+    io.to(bySession.socketId).emit("peerIce", targetId, candidate, socket.id);
+  } else {
+    io.to(targetId).emit("peerIce", targetId, candidate, socket.id);
+  }
+});
+```
+
+The `peerAnswer` relay needed a special case. The desktop replies using the controller's raw socket ID, not a session UUID, so the lookup had to bypass the `sessionMap` entirely. Without this fix the answer was silently dropped and the connection never completed.
+
+This was the part I would not have caught myself. I did not think about the difference between a session UUID and a raw socket ID until Claude pointed out that my server was mixing them up in the answer relay.
+
+### controller.js
+
+A `startWebRTC()` function was added that runs when the user taps the Enable button. It creates the `RTCPeerConnection`, opens the data channel as the offerer, and sends the offer to the desktop:
+
+```js
+pc = new RTCPeerConnection(RTC_CONFIG);
+dataChannel = pc.createDataChannel("game", {
+  ordered: false,
+  maxRetransmits: 0  // drop stale packets, UDP-like behaviour
+});
+const offer = await pc.createOffer();
+await pc.setLocalDescription(offer);
+socket.emit("peerOffer", targetId, offer);
+```
+
+All `sendMove` and `sendData` calls now check if the data channel is open first and fall back to socket only if it is not ready:
+
+```js
+function sendData(type, payload) {
+  if (rtcReady && dataChannel?.readyState === "open") {
+    dataChannel.send(JSON.stringify({ type, data: payload }));
+  } else {
+    socket.emit(...); // fallback
+  }
+}
+```
+
+I liked this pattern. The game keeps working even during the brief window while WebRTC is negotiating, and once the channel opens everything switches over automatically without any manual intervention.
+
+### desktop.js
+
+The desktop listens for the offer and answers it. Because it is the answerer it does not create the data channel - it receives it via `ondatachannel`:
+
+```js
+socket.on("peerOffer", async (_, offer, fromSocketId) => {
+  controllerSocketId = fromSocketId;
+  pc = new RTCPeerConnection(RTC_CONFIG);
+  pc.ondatachannel = (event) => {
+    dataChannel = event.channel;
+    dataChannel.onmessage = (e) => handleDataChannelMessage(JSON.parse(e.data));
+  };
+  await pc.setRemoteDescription(offer);
+  const answer = await pc.createAnswer();
+  await pc.setLocalDescription(answer);
+  socket.emit("peerAnswer", controllerSocketId, answer);
+});
+```
+
+## The ICE Candidate Race Condition Bug
+
+After the first implementation the connection was stuck at `PC state: connecting` on both sides. The offer and answer were being exchanged correctly but the data channel never opened.
+
+The problem was a race condition in ICE negotiation. The desktop sends its ICE candidates almost immediately after the answer. On the controller side those candidates were arriving before `setRemoteDescription` had finished executing. Calling `addIceCandidate` before the remote description is set causes WebRTC to silently drop the candidates. With no valid candidates the connection could never complete.
+
+Claude identified this as the issue and the fix was to queue incoming ICE candidates and flush them only after `setRemoteDescription` had succeeded. I would not have found this on my own - there was no error, no crash, just silence. The connection sat at connecting and nothing happened. Without knowing the exact order WebRTC expects things in, there was nothing obvious to look for.
+
+```js
+socket.on("peerIce", async (_targetId, candidate) => {
+  if (!remoteDescSet) {
+    pendingIceCandidates.push(candidate); // hold it until ready
+    return;
+  }
+  await pc.addIceCandidate(new RTCIceCandidate(candidate));
+});
+
+// inside peerAnswer handler, after setRemoteDescription:
+remoteDescSet = true;
+const queued = pendingIceCandidates.splice(0);
+for (const c of queued) {
+  await pc.addIceCandidate(new RTCIceCandidate(c));
+}
+```
+
+Once that was in place the connection went through immediately. The controller log showed `ICE state: connected`, `PC state: connected`, and `WebRTC data channel open` all in sequence.
+
+This was probably the most frustrating bug of the whole project. Everything looked like it was working - the offer and answer were being exchanged - but nothing actually connected. I had no idea where to look until Claude explained the WebRTC lifecycle and why candidate ordering matters.
+
+### iOS Permission Order Bug
+
+There was a second bug specific to iOS. The `DeviceOrientationEvent.requestPermission()` call was placed after `await startWebRTC()`. iOS requires that permission prompts are the very first thing inside a user gesture handler. Any `await` before it breaks the gesture context and Safari throws an error instead of showing the prompt.
+
+The fix was to move the permission request to the top of the click handler before any other awaits:
+
+```js
+enableBtn.addEventListener("click", async () => {
+  // iOS: permission request MUST come before any other await
+  const perm = await DeviceOrientationEvent.requestPermission();
+  // then start WebRTC
+  await startWebRTC();
+  startMotion();
+});
+```
+
+### Result
+
+After both fixes the full connection flow works correctly. The controller shows `P2P connected!` and all game data travels directly between the phone and the desktop. Socket.io is only active during the initial handshake. A small indicator in the desktop HUD confirms whether the active transport is WebRTC or socket fallback.
+
 ## Next Step – Game States, Menu and Power-ups
 
-Now that the core gameplay is stable I want to make it feel like an actual game and not just a technical demo.
+Now that the core gameplay is stable and the WebRTC data channel is properly in place I want to make it feel like an actual game and not just a technical demo.
 
 First I want proper game states. Right now everything just loads straight into the canvas. I want a menu screen where the QR code is shown, then once the phone connects it transitions into the game, and when you die it shows a game over screen with the score and a restart option.
 

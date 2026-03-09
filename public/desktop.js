@@ -1,8 +1,6 @@
 const socket = io({ reconnection: true });
 
-console.log("hideBtn:", document.getElementById("hide"));
-
-// Stable session ID for the desktop too
+// ── Session ID ───────────────────────────────────────────────────────────────
 let sessionId = localStorage.getItem("desktopSessionId");
 if (!sessionId) {
   sessionId = crypto.randomUUID();
@@ -13,13 +11,87 @@ socket.on("connect", () => {
   socket.emit("register", sessionId);
 });
 
+// ── WebRTC ───────────────────────────────────────────────────────────────────
+
+const RTC_CONFIG = {
+  iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+};
+
+let pc = null; 
+let dataChannel = null; 
+let controllerSocketId = null; 
+
+
+socket.on("peerOffer", async (_targetSessionId, offer, fromSocketId) => {
+  console.log("Received peerOffer from controller socket:", fromSocketId);
+  controllerSocketId = fromSocketId;
+
+
+  if (pc) pc.close();
+
+  pc = new RTCPeerConnection(RTC_CONFIG);
+
+
+  pc.ondatachannel = (event) => {
+    dataChannel = event.channel;
+    dataChannel.onopen = () => {
+      console.log("✅ WebRTC data channel open");
+      phoneConnected = true;
+    };
+    dataChannel.onclose = () => {
+      console.log("⚠️ WebRTC data channel closed — falling back to socket");
+      dataChannel = null;
+    };
+    dataChannel.onmessage = (e) => {
+      handleDataChannelMessage(JSON.parse(e.data));
+    };
+  };
+
+
+  pc.onicecandidate = (event) => {
+    if (event.candidate) {
+      socket.emit("peerIce", controllerSocketId, event.candidate);
+    }
+  };
+
+  pc.onconnectionstatechange = () => {
+    console.log("PC state:", pc.connectionState);
+  };
+
+  await pc.setRemoteDescription(new RTCSessionDescription(offer));
+  const answer = await pc.createAnswer();
+  await pc.setLocalDescription(answer);
+
+  
+  socket.emit("peerAnswer", controllerSocketId, answer);
+});
+
+
+socket.on("peerIce", async (_targetId, candidate, _fromSocketId) => {
+  if (!pc) return;
+  try {
+    await pc.addIceCandidate(new RTCIceCandidate(candidate));
+  } catch (e) {
+    console.warn("ICE candidate error:", e);
+  }
+});
+
+
+function handleDataChannelMessage(msg) {
+  if (msg.type === "update") {
+    handleUpdate(msg.data);
+  } else if (msg.type === "shoot") {
+    handleShoot(msg.data);
+  }
+}
+
+// ── Music ────────────────────────────────────────────────────────────────────
 const bgMusic = new Audio("/music.mp3");
 bgMusic.loop = true;
 bgMusic.volume = 0.4;
 bgMusic.addEventListener("error", (e) =>
   console.error("Music error:", e, bgMusic.error),
 );
-console.log("Music src:", bgMusic.src);
 
 const statusEl = document.getElementById("status");
 const urlEl = document.getElementById("url");
@@ -28,7 +100,7 @@ const hideBtn = document.getElementById("hide");
 const canvas = document.getElementById("tank");
 const ctx = canvas.getContext("2d");
 
-// ── QR / overlay ────────────────────────────────────────────────────────────
+// ── QR / overlay ─────────────────────────────────────────────────────────────
 socket.on("your-id", (myId) => {
   const controllerURL = `${location.protocol}//${location.host}/controller.html?target=${sessionId}`;
 
@@ -47,10 +119,9 @@ hideBtn.addEventListener("click", () => {
   bgMusic.play().catch((err) => console.error("Music failed:", err));
 });
 
-// ── Canvas / tank rendering ──────────────────────────────────────────────────
+// ── Canvas / tank rendering ───────────────────────────────────────────────────
 let tankX = 0;
 let tankY = 0;
-
 let aimX = 1;
 let aimY = 0;
 
@@ -61,7 +132,7 @@ function resize() {
 window.addEventListener("resize", resize);
 resize();
 
-socket.on("update", (data) => {
+function handleUpdate(data) {
   if (gameOver) return;
   phoneConnected = true;
   if (typeof data.gx === "number") tankX = data.gx;
@@ -76,16 +147,18 @@ socket.on("update", (data) => {
     aimX += (targetAimX - aimX) * 0.15;
     aimY += (targetAimY - aimY) * 0.15;
   }
-});
+}
 
-// ── Bullets ─────────────────────────────────────────────────────────────────
+
+socket.on("update", (data) => handleUpdate(data));
+
+// ── Bullets ───────────────────────────────────────────────────────────────────
 const bullets = [];
 const BULLET_SIZE = 10;
 const BULLET_SPEED = 14;
 const MUZZLE_LEN = 36;
 
-socket.on("shoot", (payload) => {
-  // console.log("DESKTOP received shoot:", payload);
+function handleShoot(payload) {
   if (gameOver) return;
   let dirX = typeof payload?.dirX === "number" ? payload.dirX : aimX;
   let dirY = typeof payload?.dirY === "number" ? payload.dirY : aimY;
@@ -107,9 +180,12 @@ socket.on("shoot", (payload) => {
     vy: dirY * BULLET_SPEED,
     size: BULLET_SIZE,
   });
-});
+}
 
-// ── Enemies ─────────────────────────────────────────────────────────────────
+
+socket.on("shoot", (payload) => handleShoot(payload));
+
+// ── Enemies ───────────────────────────────────────────────────────────────────
 const enemies = [];
 const ENEMY_COLORS = ["#ff2d2d", "#ff7a00", "#ffd400"];
 const ENEMY_SPEED_MIN = 0.6;
@@ -118,7 +194,7 @@ const ENEMY_SIZE_MIN = 18;
 const ENEMY_SIZE_MAX = 34;
 const SPAWN_MARGIN = 60;
 
-// ── Game state ────────
+// ── Game state ────────────────────────────────────────────────────────────────
 let score = 0;
 let lives = 5;
 let gameOver = false;
@@ -136,7 +212,6 @@ function pick(arr) {
 function spawnEnemy() {
   const W = canvas.width;
   const H = canvas.height;
-
   const side = (Math.random() * 4) | 0;
   let x, y;
 
@@ -179,18 +254,15 @@ function scheduleSpawn() {
     if (!gameOver) scheduleSpawn();
   }, getSpawnInterval());
 }
-
 scheduleSpawn();
 
-// ── Collision (square-square, center based) ──────────────────────────────────
 function hit(ax, ay, as, bx, by, bs) {
   return Math.abs(ax - bx) * 2 < as + bs && Math.abs(ay - by) * 2 < as + bs;
 }
 
-// ── Main loop ───────────────────────────────────────────────────────────────
+// ── Main loop ─────────────────────────────────────────────────────────────────
 function draw() {
   frameCount++;
-
   const W = canvas.width;
   const H = canvas.height;
 
@@ -212,7 +284,6 @@ function draw() {
     ctx.stroke();
   }
 
-  // tank in pixels
   const cx = W / 2 + tankX * (W / 2 - 40);
   const cy = H / 2 + tankY * (H / 2 - 40);
   const tankSize = 48;
@@ -222,30 +293,24 @@ function draw() {
     const b = bullets[i];
     b.x += b.vx;
     b.y += b.vy;
-
     if (b.x < -80 || b.x > W + 80 || b.y < -80 || b.y > H + 80) {
       bullets.splice(i, 1);
-      continue;
     }
   }
 
-  // update enemies (chase tank)
+  // update enemies
   for (let i = enemies.length - 1; i >= 0; i--) {
     const e = enemies[i];
-
     const dx = cx - e.x;
     const dy = cy - e.y;
     const mag = Math.hypot(dx, dy) || 1;
-
     e.x += (dx / mag) * e.speed;
     e.y += (dy / mag) * e.speed;
 
     if (hit(e.x, e.y, e.size, cx, cy, tankSize)) {
       enemies.splice(i, 1);
       lives -= 1;
-      if (lives <= 0) {
-        gameOver = true;
-      }
+      if (lives <= 0) gameOver = true;
     }
   }
 
@@ -263,7 +328,7 @@ function draw() {
     }
   }
 
-  // draw bullets (RED squares)
+  // draw bullets
   ctx.fillStyle = "red";
   for (const b of bullets) {
     ctx.fillRect(b.x - b.size / 2, b.y - b.size / 2, b.size, b.size);
@@ -279,7 +344,7 @@ function draw() {
   ctx.fillStyle = "#4a9";
   ctx.fillRect(cx - tankSize / 2, cy - tankSize / 2, tankSize, tankSize);
 
-  // barrel line
+  // barrel
   ctx.strokeStyle = "#2d7";
   ctx.lineWidth = 8;
   ctx.beginPath();
@@ -291,25 +356,31 @@ function draw() {
   ctx.fillStyle = "rgba(0,0,0,0.45)";
   ctx.fillRect(0, 0, W, 64);
 
-  // Score (center)
   ctx.fillStyle = "white";
   ctx.font = "bold 22px system-ui";
   ctx.textAlign = "center";
   ctx.fillText(`SCORE: ${score}`, W / 2, 38);
 
-  // Enemies (left)
   ctx.font = "15px system-ui";
   ctx.textAlign = "left";
   ctx.fillText(`enemies: ${enemies.length}`, 20, 38);
 
-  // Lives (right) — hearts
   ctx.textAlign = "right";
   ctx.font = "22px system-ui";
   const heartsDisplay =
     "❤️".repeat(Math.max(0, lives)) + "🖤".repeat(Math.max(0, 5 - lives));
   ctx.fillText(heartsDisplay, W - 20, 38);
 
-  // Reset alignment
+  // WebRTC connection indicator
+  ctx.textAlign = "left";
+  ctx.font = "12px system-ui";
+  ctx.fillStyle = dataChannel?.readyState === "open" ? "#2d7" : "#f80";
+  ctx.fillText(
+    dataChannel?.readyState === "open" ? "● WebRTC" : "● Socket",
+    20,
+    58,
+  );
+
   ctx.textAlign = "left";
 
   if (!phoneConnected) {
@@ -334,11 +405,11 @@ function draw() {
 
   requestAnimationFrame(draw);
 }
+
 window.addEventListener("keydown", (e) => {
   if (e.key === "r" || e.key === "R") {
     e.preventDefault();
     bgMusic.play().catch(() => {});
-    if (bgMusic.paused) bgMusic.play().catch(() => {});
     score = 0;
     lives = 5;
     gameOver = false;
