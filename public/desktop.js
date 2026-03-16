@@ -64,6 +64,7 @@ let aimX = 1;
 let aimY = 0;
 
 let score = 0;
+let bestScore = parseInt(localStorage.getItem("tiltSmashBest")) || 0;
 let lives = 5;
 let gameOver = false;
 let startTime = Date.now();
@@ -78,7 +79,6 @@ let spawnTimeoutId = null;
 const BULLET_SIZE = 10;
 const BULLET_SPEED = 14;
 const MUZZLE_LEN = 36;
-
 
 const BULLET_COLOR = "#00ffaa";
 const ENEMY_COLORS = ["#ff2d2d", "#ff7a00", "#ffd400"];
@@ -109,6 +109,8 @@ function startCountdown() {
 
   const interval = setInterval(() => {
     count--;
+    enemyHitSound.currentTime = 0;
+    enemyHitSound.play().catch(() => {});
     if (count > 0) {
       countdownNumber.textContent = count;
     } else {
@@ -132,7 +134,6 @@ bgMusic.addEventListener("error", (e) =>
 const enemyHitSound = new Audio("/enemyHitSound.wav");
 const playerHitSound = new Audio("/playerHitSound.wav");
 enemyHitSound.volume = 0.3;
-// playerHitSound.volume = 0.6;
 
 // ── QR / overlay ─────────────────────────────────────────────────────────────
 socket.on("your-id", (myId) => {
@@ -387,6 +388,10 @@ function draw() {
         enemies.splice(ei, 1);
         bullets.splice(bi, 1);
         score += 1;
+        if (score > bestScore) {
+          bestScore = score;
+          localStorage.setItem("tiltSmashBest", bestScore);
+        }
         break;
       }
     }
@@ -441,6 +446,12 @@ function draw() {
   ctx.textAlign = "center";
   ctx.fillText(`SCORE: ${score}`, W / 2, 38);
 
+  if (bestScore > 0) {
+    ctx.font = "12px system-ui";
+    ctx.fillStyle = "#aaa";
+    ctx.fillText(`BEST: ${bestScore}`, W / 2, 56);
+  }
+
   ctx.font = "15px system-ui";
   ctx.textAlign = "left";
   ctx.fillText(`enemies: ${enemies.length}`, 20, 38);
@@ -454,11 +465,7 @@ function draw() {
   ctx.textAlign = "left";
   ctx.font = "12px system-ui";
   ctx.fillStyle = peer?.connected ? "#2d7" : "#f80";
-  ctx.fillText(
-    peer?.connected ? "● WebRTC" : "● Socket",
-    20,
-    58,
-  );
+  ctx.fillText(peer?.connected ? "● WebRTC" : "● Socket", 20, 58);
 
   ctx.textAlign = "left";
 
@@ -476,8 +483,16 @@ function draw() {
     ctx.font = "bold 48px system-ui";
     ctx.fillText("GAME OVER", W / 2 - 150, H / 2);
     ctx.font = "18px system-ui";
-    ctx.fillText(`final score: ${score}`, W / 2 - 60, H / 2 + 36);
-    ctx.fillText("Tap Restart on your phone", W / 2 - 120, H / 2 + 66);
+    ctx.fillText(`score: ${score}`, W / 2 - 40, H / 2 + 36);
+    if (score >= bestScore && score > 0) {
+      ctx.fillStyle = "#ffd400";
+      ctx.fillText("NEW BEST!", W / 2 - 55, H / 2 + 60);
+    } else {
+      ctx.fillStyle = "#aaa";
+      ctx.fillText(`best: ${bestScore}`, W / 2 - 35, H / 2 + 60);
+    }
+    ctx.fillStyle = "white";
+    ctx.fillText("Tap Restart on your phone", W / 2 - 120, H / 2 + 90);
     return;
   }
 
