@@ -70,6 +70,7 @@ let phoneConnected = false;
 
 const bullets = [];
 const enemies = [];
+const particles = [];
 let spawnTimeoutId = null;
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -77,6 +78,7 @@ const BULLET_SIZE = 10;
 const BULLET_SPEED = 14;
 const MUZZLE_LEN = 36;
 
+const BULLET_COLOR = "#00ffaa";
 const ENEMY_COLORS = ["#ff2d2d", "#ff7a00", "#ffd400"];
 const ENEMY_SPEED_MIN = 0.6;
 const ENEMY_SPEED_MAX = 1.2;
@@ -97,6 +99,11 @@ bgMusic.volume = 0.4;
 bgMusic.addEventListener("error", (e) =>
   console.error("Music error:", e, bgMusic.error),
 );
+
+const enemyHitSound = new Audio("/enemyHitSound.wav");
+const playerHitSound = new Audio("/playerHitSound.wav");
+enemyHitSound.volume = 0.3;
+// playerHitSound.volume = 0.6;
 
 // ── QR / overlay ─────────────────────────────────────────────────────────────
 socket.on("your-id", (myId) => {
@@ -212,6 +219,23 @@ function pick(arr) {
   return arr[(Math.random() * arr.length) | 0];
 }
 
+function spawnParticles(x, y, color, size) {
+  const count = 8 + Math.random() * 4;
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 2 + Math.random() * 4;
+    particles.push({
+      x,
+      y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      size: size * 0.3 * (0.5 + Math.random() * 0.5),
+      color,
+      life: 1,
+    });
+  }
+}
+
 function spawnEnemy() {
   const W = canvas.width;
   const H = canvas.height;
@@ -323,6 +347,8 @@ function draw() {
     if (hit(e.x, e.y, e.size, cx, cy, tankSize)) {
       enemies.splice(i, 1);
       lives -= 1;
+      playerHitSound.currentTime = 0;
+      playerHitSound.play().catch(() => {});
       if (lives <= 0) gameOver = true;
     }
   }
@@ -333,6 +359,9 @@ function draw() {
     for (let bi = bullets.length - 1; bi >= 0; bi--) {
       const b = bullets[bi];
       if (hit(e.x, e.y, e.size, b.x, b.y, b.size)) {
+        spawnParticles(e.x, e.y, e.color, e.size);
+        enemyHitSound.currentTime = 0;
+        enemyHitSound.play().catch(() => {});
         enemies.splice(ei, 1);
         bullets.splice(bi, 1);
         score += 1;
@@ -342,10 +371,26 @@ function draw() {
   }
 
   // draw bullets
-  ctx.fillStyle = "red";
+  ctx.fillStyle = BULLET_COLOR;
   for (const b of bullets) {
     ctx.fillRect(b.x - b.size / 2, b.y - b.size / 2, b.size, b.size);
   }
+
+  // update and draw particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    p.life -= 0.03;
+    if (p.life <= 0) {
+      particles.splice(i, 1);
+      continue;
+    }
+    ctx.globalAlpha = p.life;
+    ctx.fillStyle = p.color;
+    ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+  }
+  ctx.globalAlpha = 1;
 
   // draw enemies
   for (const e of enemies) {
