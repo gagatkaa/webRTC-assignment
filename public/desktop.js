@@ -31,6 +31,7 @@ socket.on("webrtcSignal", (signalData, fromSocketId) => {
 
     peer.on("connect", () => {
       phoneConnected = true;
+      startCountdown();
     });
 
     peer.on("data", (data) => {
@@ -63,6 +64,7 @@ let aimX = 1;
 let aimY = 0;
 
 let score = 0;
+let bestScore = parseInt(localStorage.getItem("tiltSmashBest")) || 0;
 let lives = 5;
 let gameOver = false;
 let startTime = Date.now();
@@ -70,6 +72,7 @@ let phoneConnected = false;
 
 const bullets = [];
 const enemies = [];
+const particles = [];
 let spawnTimeoutId = null;
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -77,6 +80,7 @@ const BULLET_SIZE = 10;
 const BULLET_SPEED = 14;
 const MUZZLE_LEN = 36;
 
+const BULLET_COLOR = "#00ffaa";
 const ENEMY_COLORS = ["#ff2d2d", "#ff7a00", "#ffd400"];
 const ENEMY_SPEED_MIN = 0.6;
 const ENEMY_SPEED_MAX = 1.2;
@@ -86,9 +90,38 @@ const SPAWN_MARGIN = 60;
 
 // ── DOM Elements ────────────────────────────────────────────────────────────
 const statusEl = document.getElementById("status");
-const urlEl = document.getElementById("url");
 const qrEl = document.getElementById("qr");
-const hideBtn = document.getElementById("hide");
+const overlay = document.getElementById("overlay");
+const countdownEl = document.getElementById("countdown");
+const countdownNumber = document.getElementById("countdown-number");
+
+// ── Game State ────────────────────────────────────────────────────────────────
+let gameStarted = false;
+
+function startCountdown() {
+  if (gameStarted) return;
+
+  overlay.classList.add("hidden");
+  countdownEl.classList.add("show");
+
+  let count = 3;
+  countdownNumber.textContent = count;
+
+  const interval = setInterval(() => {
+    count--;
+    enemyHitSound.currentTime = 0;
+    enemyHitSound.play().catch(() => {});
+    if (count > 0) {
+      countdownNumber.textContent = count;
+    } else {
+      clearInterval(interval);
+      countdownEl.classList.remove("show");
+      startTime = Date.now();
+      gameStarted = true;
+      bgMusic.play().catch(() => {});
+    }
+  }, 1000);
+}
 
 // ── Music ────────────────────────────────────────────────────────────────────
 const bgMusic = new Audio("/music.mp3");
@@ -98,23 +131,20 @@ bgMusic.addEventListener("error", (e) =>
   console.error("Music error:", e, bgMusic.error),
 );
 
+const enemyHitSound = new Audio("/enemyHitSound.wav");
+const playerHitSound = new Audio("/playerHitSound.wav");
+enemyHitSound.volume = 0.3;
+
 // ── QR / overlay ─────────────────────────────────────────────────────────────
 socket.on("your-id", (myId) => {
   const controllerURL = `${location.protocol}//${location.host}/controller.html?target=${sessionId}`;
 
   statusEl.textContent = "Scan to connect your phone:";
-  urlEl.textContent = controllerURL;
-  urlEl.href = controllerURL;
 
   const qr = qrcode(0, "M");
   qr.addData(controllerURL);
   qr.make();
   qrEl.innerHTML = qr.createImgTag(4, 8);
-});
-
-hideBtn.addEventListener("click", () => {
-  document.getElementById("overlay").style.display = "none";
-  bgMusic.play().catch((err) => console.error("Music failed:", err));
 });
 
 // ── Resize ───────────────────────────────────────────────────────────────────
@@ -212,6 +242,23 @@ function pick(arr) {
   return arr[(Math.random() * arr.length) | 0];
 }
 
+function spawnParticles(x, y, color, size) {
+  const count = 8 + Math.random() * 4;
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 2 + Math.random() * 4;
+    particles.push({
+      x,
+      y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      size: size * 0.3 * (0.5 + Math.random() * 0.5),
+      color,
+      life: 1,
+    });
+  }
+}
+
 function spawnEnemy() {
   const W = canvas.width;
   const H = canvas.height;
@@ -232,7 +279,7 @@ function spawnEnemy() {
     y = H + SPAWN_MARGIN;
   }
 
-  const elapsed = phoneConnected ? (Date.now() - startTime) / 1000 : 0;
+  const elapsed = gameStarted ? (Date.now() - startTime) / 1000 : 0;
   const difficulty = Math.min(elapsed / 60, 1);
   const speedBoost = difficulty * 3;
 
@@ -246,7 +293,7 @@ function spawnEnemy() {
 }
 
 function getSpawnInterval() {
-  const elapsed = phoneConnected ? (Date.now() - startTime) / 1000 : 0;
+  const elapsed = gameStarted ? (Date.now() - startTime) / 1000 : 0;
   const difficulty = Math.min(elapsed / 90, 1);
   return 2000 - difficulty * 1500;
 }
@@ -258,7 +305,7 @@ function startSpawnCycle() {
 
   function scheduleSpawn() {
     spawnTimeoutId = setTimeout(() => {
-      if (!gameOver && phoneConnected) {
+      if (!gameOver && gameStarted) {
         spawnEnemy();
       }
       if (!gameOver) {
@@ -323,6 +370,8 @@ function draw() {
     if (hit(e.x, e.y, e.size, cx, cy, tankSize)) {
       enemies.splice(i, 1);
       lives -= 1;
+      playerHitSound.currentTime = 0;
+      playerHitSound.play().catch(() => {});
       if (lives <= 0) gameOver = true;
     }
   }
@@ -333,19 +382,42 @@ function draw() {
     for (let bi = bullets.length - 1; bi >= 0; bi--) {
       const b = bullets[bi];
       if (hit(e.x, e.y, e.size, b.x, b.y, b.size)) {
+        spawnParticles(e.x, e.y, e.color, e.size);
+        enemyHitSound.currentTime = 0;
+        enemyHitSound.play().catch(() => {});
         enemies.splice(ei, 1);
         bullets.splice(bi, 1);
         score += 1;
+        if (score > bestScore) {
+          bestScore = score;
+          localStorage.setItem("tiltSmashBest", bestScore);
+        }
         break;
       }
     }
   }
 
   // draw bullets
-  ctx.fillStyle = "red";
+  ctx.fillStyle = BULLET_COLOR;
   for (const b of bullets) {
     ctx.fillRect(b.x - b.size / 2, b.y - b.size / 2, b.size, b.size);
   }
+
+  // update and draw particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    p.life -= 0.03;
+    if (p.life <= 0) {
+      particles.splice(i, 1);
+      continue;
+    }
+    ctx.globalAlpha = p.life;
+    ctx.fillStyle = p.color;
+    ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+  }
+  ctx.globalAlpha = 1;
 
   // draw enemies
   for (const e of enemies) {
@@ -374,6 +446,12 @@ function draw() {
   ctx.textAlign = "center";
   ctx.fillText(`SCORE: ${score}`, W / 2, 38);
 
+  if (bestScore > 0) {
+    ctx.font = "12px system-ui";
+    ctx.fillStyle = "#aaa";
+    ctx.fillText(`BEST: ${bestScore}`, W / 2, 56);
+  }
+
   ctx.font = "15px system-ui";
   ctx.textAlign = "left";
   ctx.fillText(`enemies: ${enemies.length}`, 20, 38);
@@ -391,12 +469,11 @@ function draw() {
 
   ctx.textAlign = "left";
 
-  if (!phoneConnected) {
+  if (!gameStarted) {
     ctx.fillStyle = "rgba(0,0,0,0.45)";
     ctx.fillRect(0, 0, W, H);
     ctx.fillStyle = "white";
     ctx.font = "bold 28px system-ui";
-    ctx.fillText("Waiting for phone to connect...", W / 2 - 200, H / 2);
   }
 
   if (gameOver) {
@@ -406,8 +483,16 @@ function draw() {
     ctx.font = "bold 48px system-ui";
     ctx.fillText("GAME OVER", W / 2 - 150, H / 2);
     ctx.font = "18px system-ui";
-    ctx.fillText(`final score: ${score}`, W / 2 - 60, H / 2 + 36);
-    ctx.fillText("Tap Restart on your phone", W / 2 - 120, H / 2 + 66);
+    ctx.fillText(`score: ${score}`, W / 2 - 40, H / 2 + 36);
+    if (score >= bestScore && score > 0) {
+      ctx.fillStyle = "#ffd400";
+      ctx.fillText("NEW BEST!", W / 2 - 55, H / 2 + 60);
+    } else {
+      ctx.fillStyle = "#aaa";
+      ctx.fillText(`best: ${bestScore}`, W / 2 - 35, H / 2 + 60);
+    }
+    ctx.fillStyle = "white";
+    ctx.fillText("Tap Restart on your phone", W / 2 - 120, H / 2 + 90);
     return;
   }
 

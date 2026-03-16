@@ -446,7 +446,7 @@ A `startWebRTC()` function was added that runs when the user taps the Enable but
 pc = new RTCPeerConnection(RTC_CONFIG);
 dataChannel = pc.createDataChannel("game", {
   ordered: false,
-  maxRetransmits: 0  // drop stale packets, UDP-like behaviour
+  maxRetransmits: 0, // drop stale packets, UDP-like behaviour
 });
 const offer = await pc.createOffer();
 await pc.setLocalDescription(offer);
@@ -544,3 +544,111 @@ First I want proper game states. Right now everything just loads straight into t
 Second I want power-ups. Random pick-ups that appear on screen that the tank collects by moving over them. Things like a speed boost, a shield, or faster shooting. They should disappear if you do not reach them in time. That should make each run feel different.
 
 And lastly some actual styling. The game looks very raw right now and I want to give it a proper visual identity with a cleaner HUD and visual feedback when you get hit or collect something.
+
+## Migrating to simple-peer
+
+The teacher suggested switching from raw WebRTC to `simple-peer` since working that low level was unnecessary for this project. On top of that I was having connection issues at school that I could not reproduce at home - pretty hard to debug. Switching to `simple-peer` fixed it. I learned a lot from the raw implementation but this was definitely the right move.
+
+### What I Changed
+
+**controller.js and desktop.js** - replaced all the manual `RTCPeerConnection`, ICE candidate handling, and offer/answer logic with a `SimplePeer` instance. Both sides now just emit and listen to a single `webrtcSignal` event and the library handles the rest.
+
+**index.js** - replaced the three separate socket events (`peerOffer`, `peerAnswer`, `peerIce`) with one unified relay:
+
+```javascript
+socket.on("webrtcSignal", (targetId, signalData) => {
+  const bySession = sessionMap[targetId];
+  if (bySession) {
+    io.to(bySession.socketId).emit("webrtcSignal", signalData, socket.id);
+  } else {
+    io.to(targetId).emit("webrtcSignal", signalData, socket.id);
+  }
+});
+```
+
+### My Reflection
+
+Working through raw WebRTC first actually helped - I understand what the library is doing under the hood. But for a project like this it just adds complexity you do not need. Would use `simple-peer` from the start next time.
+
+## Week4 - Simple peer + styling
+
+After finishing the WebRTC migration I moved on to adding some extra features to the game.
+
+### Restart Button
+
+The first thing I added was a proper restart flow. When the game ends the phone shows a restart button and tapping it resets everything on the desktop. The server just relays the event through to the right desktop session:
+
+```js
+socket.on("restart", (targetSessionId) => {
+  const target = sessionMap[targetSessionId];
+  if (!target) return;
+  io.to(target.socketId).emit("restart");
+});
+```
+
+Simple relay, same pattern as everything else on the server. The desktop listens for `restart` and resets all game state back to the starting values.
+
+---
+
+### Particles and Sound Effects
+
+The game felt very silent and flat when you hit an enemy - nothing to tell you something happened. I added two things to fix that: particles that burst out when an enemy dies, and sound effects for both taking damage and hitting an enemy.
+
+For particles I added a `spawnParticles()` function that fires a burst of small squares in random directions whenever a bullet connects with an enemy. Each particle has a velocity, a size, and a `life` value that counts down to 0 so they fade out naturally:
+
+```js
+function spawnParticles(x, y, color, size) {
+  const count = 8 + Math.random() * 4;
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 2 + Math.random() * 4;
+    particles.push({
+      x,
+      y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      size: size * 0.3 * (0.5 + Math.random() * 0.5),
+      color,
+      life: 1,
+    });
+  }
+}
+```
+
+The draw loop updates and fades them out each frame using `globalAlpha`.
+
+For sounds I added `enemyHitSound` and `playerHitSound` as `Audio` objects. The enemy hit plays when a bullet connects, the player hit plays when an enemy reaches the tank. I reset `currentTime` to 0 before each play so rapid hits don't get swallowed:
+
+```js
+enemyHitSound.currentTime = 0;
+enemyHitSound.play().catch(() => {});
+```
+
+The game feels way more alive with both of these in. Hitting a chain of enemies now has actual crunch to it.
+
+---
+
+### Best Score, Better Menu and Countdown
+
+The last batch of changes was about making the game feel more complete from start to finish.
+
+**Best score** - I added a `bestScore` variable that reads from `localStorage` on load so it survives between sessions. Every time you score a point it checks if the new score beats the best and saves it:
+
+```js
+let bestScore = parseInt(localStorage.getItem("tiltSmashBest")) || 0;
+
+if (score > bestScore) {
+  bestScore = score;
+  localStorage.setItem("tiltSmashBest", bestScore);
+}
+```
+
+On the game over screen it shows the current score and best score. If you just beat your best it shows "NEW BEST!" in yellow instead.
+
+**Menu screen** - the QR code waiting screen got a proper redesign. Instead of just a plain overlay it now has a big logo and title so it looks like an actual game menu rather than some not important thing.
+
+**Countdown** - when the phone connects the game does not start immediately anymore. There is a 3-2-1 countdown first so the player has a moment to get ready. I reused the `enemyHitSound` as a tick sound on each number which gives it a nice rhythm. When it hits 0 the game starts.
+
+#### My Reflection
+
+These were all small individual changes but together they make the game feel finished. The particles and sounds give immediate feedback on every action. The best score gives you something to chase on repeat runs. The countdown removes that jarring jump straight into gameplay. None of it is technically complex but it makes a big difference in how the game feels to actually play.
