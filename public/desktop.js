@@ -31,6 +31,7 @@ socket.on("webrtcSignal", (signalData, fromSocketId) => {
 
     peer.on("connect", () => {
       phoneConnected = true;
+      startCountdown();
     });
 
     peer.on("data", (data) => {
@@ -78,6 +79,7 @@ const BULLET_SIZE = 10;
 const BULLET_SPEED = 14;
 const MUZZLE_LEN = 36;
 
+
 const BULLET_COLOR = "#00ffaa";
 const ENEMY_COLORS = ["#ff2d2d", "#ff7a00", "#ffd400"];
 const ENEMY_SPEED_MIN = 0.6;
@@ -88,9 +90,36 @@ const SPAWN_MARGIN = 60;
 
 // ── DOM Elements ────────────────────────────────────────────────────────────
 const statusEl = document.getElementById("status");
-const urlEl = document.getElementById("url");
 const qrEl = document.getElementById("qr");
-const hideBtn = document.getElementById("hide");
+const overlay = document.getElementById("overlay");
+const countdownEl = document.getElementById("countdown");
+const countdownNumber = document.getElementById("countdown-number");
+
+// ── Game State ────────────────────────────────────────────────────────────────
+let gameStarted = false;
+
+function startCountdown() {
+  if (gameStarted) return;
+
+  overlay.classList.add("hidden");
+  countdownEl.classList.add("show");
+
+  let count = 3;
+  countdownNumber.textContent = count;
+
+  const interval = setInterval(() => {
+    count--;
+    if (count > 0) {
+      countdownNumber.textContent = count;
+    } else {
+      clearInterval(interval);
+      countdownEl.classList.remove("show");
+      startTime = Date.now();
+      gameStarted = true;
+      bgMusic.play().catch(() => {});
+    }
+  }, 1000);
+}
 
 // ── Music ────────────────────────────────────────────────────────────────────
 const bgMusic = new Audio("/music.mp3");
@@ -110,18 +139,11 @@ socket.on("your-id", (myId) => {
   const controllerURL = `${location.protocol}//${location.host}/controller.html?target=${sessionId}`;
 
   statusEl.textContent = "Scan to connect your phone:";
-  urlEl.textContent = controllerURL;
-  urlEl.href = controllerURL;
 
   const qr = qrcode(0, "M");
   qr.addData(controllerURL);
   qr.make();
   qrEl.innerHTML = qr.createImgTag(4, 8);
-});
-
-hideBtn.addEventListener("click", () => {
-  document.getElementById("overlay").style.display = "none";
-  bgMusic.play().catch((err) => console.error("Music failed:", err));
 });
 
 // ── Resize ───────────────────────────────────────────────────────────────────
@@ -256,7 +278,7 @@ function spawnEnemy() {
     y = H + SPAWN_MARGIN;
   }
 
-  const elapsed = phoneConnected ? (Date.now() - startTime) / 1000 : 0;
+  const elapsed = gameStarted ? (Date.now() - startTime) / 1000 : 0;
   const difficulty = Math.min(elapsed / 60, 1);
   const speedBoost = difficulty * 3;
 
@@ -270,7 +292,7 @@ function spawnEnemy() {
 }
 
 function getSpawnInterval() {
-  const elapsed = phoneConnected ? (Date.now() - startTime) / 1000 : 0;
+  const elapsed = gameStarted ? (Date.now() - startTime) / 1000 : 0;
   const difficulty = Math.min(elapsed / 90, 1);
   return 2000 - difficulty * 1500;
 }
@@ -282,7 +304,7 @@ function startSpawnCycle() {
 
   function scheduleSpawn() {
     spawnTimeoutId = setTimeout(() => {
-      if (!gameOver && phoneConnected) {
+      if (!gameOver && gameStarted) {
         spawnEnemy();
       }
       if (!gameOver) {
@@ -432,11 +454,15 @@ function draw() {
   ctx.textAlign = "left";
   ctx.font = "12px system-ui";
   ctx.fillStyle = peer?.connected ? "#2d7" : "#f80";
-  ctx.fillText(peer?.connected ? "● WebRTC" : "● Socket", 20, 58);
+  ctx.fillText(
+    peer?.connected ? "● WebRTC" : "● Socket",
+    20,
+    58,
+  );
 
   ctx.textAlign = "left";
 
-  if (!phoneConnected) {
+  if (!gameStarted) {
     ctx.fillStyle = "rgba(0,0,0,0.45)";
     ctx.fillRect(0, 0, W, H);
     ctx.fillStyle = "white";
