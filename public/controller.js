@@ -4,26 +4,23 @@ const debugEl = document.getElementById("debug");
 const joystickEl = document.getElementById("joystick");
 const knobEl = document.getElementById("knob");
 
-// ── Logging ───────────────────────────────────────────────────────────────────
 function log(msg) {
   console.log(msg);
   debugEl.innerHTML += msg + "<br>";
   debugEl.scrollTop = debugEl.scrollHeight;
 }
 
-// ── 1. Target ID ──────────────────────────────────────────────────────────────
 const params = new URLSearchParams(location.search);
 const targetId = params.get("target") || params.get("id");
 
 log("Protocol: " + location.protocol);
-log("Target: " + (targetId || "MISSING ⚠️"));
+log("Target: " + (targetId || "MISSING"));
 
 if (!targetId) {
-  statusEl.textContent = "⚠️ No target ID — scan the QR from the desktop.";
+  statusEl.textContent = "No target ID — scan the QR from the desktop.";
   enableBtn.disabled = true;
 }
 
-// ── 2. Session ID ─────────────────────────────────────────────────────────────
 let sessionId = localStorage.getItem("controllerSessionId");
 if (!sessionId) {
   sessionId = crypto.randomUUID();
@@ -31,11 +28,10 @@ if (!sessionId) {
 }
 log("Session ID: " + sessionId);
 
-// ── 3. Socket (signaling only) ────────────────────────────────────────────────
 const socket = io({ reconnection: true });
 
 socket.on("connect", () => {
-  log("Socket ✅ " + socket.id);
+  log("Socket " + socket.id);
   socket.emit("register", sessionId);
   statusEl.textContent = "Connected! Press Enable Motion.";
 });
@@ -45,117 +41,62 @@ socket.on("your-id", (confirmedId) => {
 });
 
 socket.on("connect_error", (err) => {
-  log("Socket error ❌ " + err.message);
+  log("Socket error " + err.message);
 });
 
 socket.on("disconnect", (reason) => {
   log("Socket disconnected: " + reason);
   stopAutoFire();
-  statusEl.textContent = "⚠️ Disconnected — reconnecting...";
+  statusEl.textContent = "Disconnected — reconnecting...";
 });
 
-// ── 4. WebRTC ─────────────────────────────────────────────────────────────────
+let peer = null;
 
-const RTC_CONFIG = {
-  iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
-};
+function startWebRTC() {
+  log("Starting simple-peer...");
 
-let pc = null;
-let dataChannel = null;
-let rtcReady = false;
-let pendingIceCandidates = []; 
-let remoteDescSet = false;
+  if (peer) peer.destroy();
 
-async function startWebRTC() {
-  log("Starting WebRTC...");
-
-  if (pc) pc.close();
-  pendingIceCandidates = [];
-  remoteDescSet = false;
-  rtcReady = false;
-
-  pc = new RTCPeerConnection(RTC_CONFIG);
-
-  dataChannel = pc.createDataChannel("game", {
-    ordered: false, 
-    maxRetransmits: 0, 
+  peer = new SimplePeer({
+    initiator: true,
+    trickle: true,
+    config: {
+      iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+    },
   });
 
-  dataChannel.onopen = () => {
-    rtcReady = true;
-    log("WebRTC data channel open - game data going P2P!");
+  peer.on("signal", (data) => {
+    console.log("Sending signal, type:", data.type);
+    socket.emit("webrtcSignal", targetId, data);
+  });
+
+  peer.on("connect", () => {
+    log("P2P connected!");
     statusEl.textContent = "P2P connected!";
-  };
+  });
 
-  dataChannel.onclose = () => {
-    rtcReady = false;
-    log("Data channel closed - falling back to socket");
-  };
+  peer.on("data", (data) => {
+    log("Received: " + data);
+  });
 
-  dataChannel.onerror = (e) => {
-    log("Data channel error: " + e);
-  };
+  peer.on("close", () => {
+    log("Peer connection closed");
+  });
 
-
-  pc.onicecandidate = (event) => {
-    if (event.candidate) {
-      socket.emit("peerIce", targetId, event.candidate);
-    }
-  };
-
-  pc.onconnectionstatechange = () => {
-    log("PC state: " + pc.connectionState);
-  };
-
-  pc.oniceconnectionstatechange = () => {
-    log("ICE state: " + pc.iceConnectionState);
-  };
-
- 
-  const offer = await pc.createOffer();
-  await pc.setLocalDescription(offer);
-
-  log("Sending peerOffer to desktop: " + targetId);
-  socket.emit("peerOffer", targetId, offer);
+  peer.on("error", (err) => {
+    log("Peer error: " + err.code);
+  });
 }
 
-
-socket.on("peerAnswer", async (_targetSessionId, answer, _fromSocketId) => {
-  if (!pc) return;
-  log("Received peerAnswer from desktop");
-  try {
-    await pc.setRemoteDescription(new RTCSessionDescription(answer));
-    remoteDescSet = true;
-   
-    const queued = pendingIceCandidates.splice(0);
-    for (const c of queued) {
-      await pc.addIceCandidate(new RTCIceCandidate(c));
-    }
-    if (queued.length)
-      log("Flushed " + queued.length + " queued ICE candidates");
-  } catch (e) {
-    log("peerAnswer error: " + e.message);
+socket.on("webrtcSignal", (signalData) => {
+  if (peer) {
+    peer.signal(signalData);
   }
 });
-
-socket.on("peerIce", async (_targetId, candidate, _fromSocketId) => {
-  if (!pc) return;
-  if (!remoteDescSet) {
-    pendingIceCandidates.push(candidate);
-    return;
-  }
-  try {
-    await pc.addIceCandidate(new RTCIceCandidate(candidate));
-  } catch (e) {
-    log("ICE error: " + e.message);
-  }
-});
-
-// ── 5. Send helpers ───────────────────────────────────────────────────────────
 
 function sendData(type, payload) {
-  if (rtcReady && dataChannel?.readyState === "open") {
-    dataChannel.send(JSON.stringify({ type, data: payload }));
+  if (peer?.connected) {
+    peer.send(JSON.stringify({ type, data: payload }));
   } else {
     if (type === "update") socket.emit("update", targetId, payload);
     else if (type === "shoot") socket.emit("shoot", targetId, payload);
@@ -167,7 +108,6 @@ function sendMove(gx, gy) {
   sendData("update", { gx, gy });
 }
 
-// ── 6. Auto-fire ──────────────────────────────────────────────────────────────
 let aimX = 0;
 let aimY = 0;
 
@@ -198,7 +138,6 @@ function stopAutoFire() {
   log("Auto-fire stopped");
 }
 
-// ── 7. Motion button ──────────────────────────────────────────────────────────
 const noSleep = new NoSleep();
 
 enableBtn.addEventListener("click", async () => {
@@ -227,7 +166,6 @@ enableBtn.addEventListener("click", async () => {
   startMotion();
 });
 
-// ── 8. Gyro ───────────────────────────────────────────────────────────────────
 function startMotion() {
   enableBtn.style.display = "none";
   statusEl.textContent = "Tilt your phone to control the tank!";
@@ -263,7 +201,6 @@ function startMotion() {
   }, 2000);
 }
 
-// ── 9. Joystick fallback ──────────────────────────────────────────────────────
 function showJoystick() {
   joystickEl.style.display = "flex";
   statusEl.textContent = "Drag the circle to control the tank.";
@@ -313,7 +250,6 @@ joystickEl.addEventListener("touchend", () => {
   setAim(0, 0);
 });
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
 function clamp(v, min, max) {
   return Math.max(min, Math.min(max, v));
 }

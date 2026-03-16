@@ -1,6 +1,5 @@
 const socket = io({ reconnection: true });
 
-// ── Session ID ───────────────────────────────────────────────────────────────
 let sessionId = localStorage.getItem("desktopSessionId");
 if (!sessionId) {
   sessionId = crypto.randomUUID();
@@ -11,71 +10,53 @@ socket.on("connect", () => {
   socket.emit("register", sessionId);
 });
 
-// ── WebRTC ───────────────────────────────────────────────────────────────────
+let peer = null;
+let controllerSocketId = null;
 
-const RTC_CONFIG = {
-  iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
-};
+socket.on("webrtcSignal", (signalData, fromSocketId) => {
+  console.log("Received signal, type:", signalData?.type);
 
-let pc = null; 
-let dataChannel = null; 
-let controllerSocketId = null; 
+  if (!peer) {
+    controllerSocketId = fromSocketId;
+    console.log("Creating peer, controller socket:", controllerSocketId);
 
+    peer = new SimplePeer({
+      initiator: false,
+      trickle: true,
+      config: {
+        iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+      },
+    });
 
-socket.on("peerOffer", async (_targetSessionId, offer, fromSocketId) => {
-  console.log("Received peerOffer from controller socket:", fromSocketId);
-  controllerSocketId = fromSocketId;
+    peer.on("signal", (data) => {
+      console.log("Sending signal, type:", data?.type);
+      socket.emit("webrtcSignal", controllerSocketId, data);
+    });
 
-
-  if (pc) pc.close();
-
-  pc = new RTCPeerConnection(RTC_CONFIG);
-
-
-  pc.ondatachannel = (event) => {
-    dataChannel = event.channel;
-    dataChannel.onopen = () => {
-      console.log("✅ WebRTC data channel open");
+    peer.on("connect", () => {
+      console.log("P2P connected via simple-peer");
       phoneConnected = true;
-    };
-    dataChannel.onclose = () => {
-      console.log("⚠️ WebRTC data channel closed — falling back to socket");
-      dataChannel = null;
-    };
-    dataChannel.onmessage = (e) => {
-      handleDataChannelMessage(JSON.parse(e.data));
-    };
-  };
+    });
 
+    peer.on("data", (data) => {
+      try {
+        handleDataChannelMessage(JSON.parse(data));
+      } catch (e) {
+        console.warn("Failed to parse data:", e);
+      }
+    });
 
-  pc.onicecandidate = (event) => {
-    if (event.candidate) {
-      socket.emit("peerIce", controllerSocketId, event.candidate);
-    }
-  };
+    peer.on("close", () => {
+      console.log("Peer connection closed");
+    });
 
-  pc.onconnectionstatechange = () => {
-    console.log("PC state:", pc.connectionState);
-  };
-
-  await pc.setRemoteDescription(new RTCSessionDescription(offer));
-  const answer = await pc.createAnswer();
-  await pc.setLocalDescription(answer);
-
-  
-  socket.emit("peerAnswer", controllerSocketId, answer);
-});
-
-
-socket.on("peerIce", async (_targetId, candidate, _fromSocketId) => {
-  if (!pc) return;
-  try {
-    await pc.addIceCandidate(new RTCIceCandidate(candidate));
-  } catch (e) {
-    console.warn("ICE candidate error:", e);
+    peer.on("error", (err) => {
+      console.error("Peer error:", err.code);
+    });
   }
-});
 
+  peer.signal(signalData);
+});
 
 function handleDataChannelMessage(msg) {
   if (msg.type === "update") {
@@ -149,7 +130,6 @@ function handleUpdate(data) {
   }
 }
 
-
 socket.on("update", (data) => handleUpdate(data));
 
 // ── Bullets ───────────────────────────────────────────────────────────────────
@@ -181,7 +161,6 @@ function handleShoot(payload) {
     size: BULLET_SIZE,
   });
 }
-
 
 socket.on("shoot", (payload) => handleShoot(payload));
 
@@ -371,15 +350,10 @@ function draw() {
     "❤️".repeat(Math.max(0, lives)) + "🖤".repeat(Math.max(0, 5 - lives));
   ctx.fillText(heartsDisplay, W - 20, 38);
 
-  // WebRTC connection indicator
   ctx.textAlign = "left";
   ctx.font = "12px system-ui";
-  ctx.fillStyle = dataChannel?.readyState === "open" ? "#2d7" : "#f80";
-  ctx.fillText(
-    dataChannel?.readyState === "open" ? "● WebRTC" : "● Socket",
-    20,
-    58,
-  );
+  ctx.fillStyle = peer?.connected ? "#2d7" : "#f80";
+  ctx.fillText(peer?.connected ? "● WebRTC" : "● Socket", 20, 58);
 
   ctx.textAlign = "left";
 

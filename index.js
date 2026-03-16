@@ -65,6 +65,19 @@ io.on("connection", (socket) => {
   });
 
   // ── Legacy socket fallback (kept for safety during transition) ──────────
+  // ── Unified WebRTC signaling (for simple-peer) ───────────────────────────
+  socket.on("webrtcSignal", (targetId, signalData) => {
+    const bySession = sessionMap[targetId];
+    if (bySession) {
+      console.log(`webrtcSignal: relaying to session ${targetId} (socket ${bySession.socketId}), type: ${signalData?.type}`);
+      io.to(bySession.socketId).emit("webrtcSignal", signalData, socket.id);
+    } else {
+      console.log(`webrtcSignal: relaying to raw socket ${targetId}, type: ${signalData?.type}`);
+      io.to(targetId).emit("webrtcSignal", signalData, socket.id);
+    }
+  });
+
+  // ── Legacy socket fallback
   // These will only fire if WebRTC data channel is not yet open
 
   socket.on("shoot", (targetSessionId, payload) => {
