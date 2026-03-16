@@ -1,5 +1,6 @@
 const statusEl = document.getElementById("status");
 const enableBtn = document.getElementById("enable");
+const restartBtn = document.getElementById("restart");
 const debugEl = document.getElementById("debug");
 const joystickEl = document.getElementById("joystick");
 const knobEl = document.getElementById("knob");
@@ -98,8 +99,10 @@ function sendData(type, payload) {
   if (peer?.connected) {
     peer.send(JSON.stringify({ type, data: payload }));
   } else {
+    console.log("Socket fallback for:", type);
     if (type === "update") socket.emit("update", targetId, payload);
     else if (type === "shoot") socket.emit("shoot", targetId, payload);
+    else if (type === "restart") socket.emit("restart", targetId);
   }
 }
 
@@ -125,7 +128,9 @@ function maybeStartAutoFire() {
   shootTimer = setInterval(() => {
     if (!targetId) return;
     const mag = Math.hypot(aimX, aimY);
+    console.log("Auto-fire check: aimX:", aimX, "aimY:", aimY, "mag:", mag);
     if (mag < MIN_AIM_MAG) return;
+    console.log("Auto-fire firing!");
     sendData("shoot", { dirX: aimX / mag, dirY: aimY / mag, t: Date.now() });
   }, SHOOT_EVERY_MS);
   log("Auto-fire every " + SHOOT_EVERY_MS + "ms");
@@ -164,6 +169,12 @@ enableBtn.addEventListener("click", async () => {
   await startWebRTC();
 
   startMotion();
+  restartBtn.style.display = "inline-block";
+});
+
+restartBtn.addEventListener("click", () => {
+  log("Restart requested");
+  sendData("restart", {});
 });
 
 function startMotion() {

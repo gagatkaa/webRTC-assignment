@@ -10,16 +10,13 @@ socket.on("connect", () => {
   socket.emit("register", sessionId);
 });
 
+// ── WebRTC ────────────────────────────────────────────────────────────────────
 let peer = null;
 let controllerSocketId = null;
 
 socket.on("webrtcSignal", (signalData, fromSocketId) => {
-  console.log("Received signal, type:", signalData?.type);
-
   if (!peer) {
     controllerSocketId = fromSocketId;
-    console.log("Creating peer, controller socket:", controllerSocketId);
-
     peer = new SimplePeer({
       initiator: false,
       trickle: true,
@@ -29,12 +26,10 @@ socket.on("webrtcSignal", (signalData, fromSocketId) => {
     });
 
     peer.on("signal", (data) => {
-      console.log("Sending signal, type:", data?.type);
       socket.emit("webrtcSignal", controllerSocketId, data);
     });
 
     peer.on("connect", () => {
-      console.log("P2P connected via simple-peer");
       phoneConnected = true;
     });
 
@@ -58,13 +53,42 @@ socket.on("webrtcSignal", (signalData, fromSocketId) => {
   peer.signal(signalData);
 });
 
-function handleDataChannelMessage(msg) {
-  if (msg.type === "update") {
-    handleUpdate(msg.data);
-  } else if (msg.type === "shoot") {
-    handleShoot(msg.data);
-  }
-}
+// ── Game State ────────────────────────────────────────────────────────────────
+const canvas = document.getElementById("tank");
+const ctx = canvas.getContext("2d");
+
+let tankX = 0;
+let tankY = 0;
+let aimX = 1;
+let aimY = 0;
+
+let score = 0;
+let lives = 5;
+let gameOver = false;
+let startTime = Date.now();
+let phoneConnected = false;
+
+const bullets = [];
+const enemies = [];
+let spawnTimeoutId = null;
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+const BULLET_SIZE = 10;
+const BULLET_SPEED = 14;
+const MUZZLE_LEN = 36;
+
+const ENEMY_COLORS = ["#ff2d2d", "#ff7a00", "#ffd400"];
+const ENEMY_SPEED_MIN = 0.6;
+const ENEMY_SPEED_MAX = 1.2;
+const ENEMY_SIZE_MIN = 18;
+const ENEMY_SIZE_MAX = 34;
+const SPAWN_MARGIN = 60;
+
+// ── DOM Elements ────────────────────────────────────────────────────────────
+const statusEl = document.getElementById("status");
+const urlEl = document.getElementById("url");
+const qrEl = document.getElementById("qr");
+const hideBtn = document.getElementById("hide");
 
 // ── Music ────────────────────────────────────────────────────────────────────
 const bgMusic = new Audio("/music.mp3");
@@ -73,13 +97,6 @@ bgMusic.volume = 0.4;
 bgMusic.addEventListener("error", (e) =>
   console.error("Music error:", e, bgMusic.error),
 );
-
-const statusEl = document.getElementById("status");
-const urlEl = document.getElementById("url");
-const qrEl = document.getElementById("qr");
-const hideBtn = document.getElementById("hide");
-const canvas = document.getElementById("tank");
-const ctx = canvas.getContext("2d");
 
 // ── QR / overlay ─────────────────────────────────────────────────────────────
 socket.on("your-id", (myId) => {
@@ -100,12 +117,7 @@ hideBtn.addEventListener("click", () => {
   bgMusic.play().catch((err) => console.error("Music failed:", err));
 });
 
-// ── Canvas / tank rendering ───────────────────────────────────────────────────
-let tankX = 0;
-let tankY = 0;
-let aimX = 1;
-let aimY = 0;
-
+// ── Resize ───────────────────────────────────────────────────────────────────
 function resize() {
   canvas.width = window.innerWidth;
   canvas.height = window.innerHeight;
@@ -113,9 +125,29 @@ function resize() {
 window.addEventListener("resize", resize);
 resize();
 
+// ── Socket Handlers ────────────────────────────────────────────────────────
+socket.on("update", (data) => handleUpdate(data));
+socket.on("shoot", (payload) => {
+  console.log("Received shoot via socket:", payload);
+  handleShoot(payload);
+});
+socket.on("restart", () => restartGame());
+
+function handleDataChannelMessage(msg) {
+  if (msg.type === "update") {
+    handleUpdate(msg.data);
+  } else if (msg.type === "shoot") {
+    handleShoot(msg.data);
+  } else if (msg.type === "restart") {
+    restartGame();
+  }
+}
+
+// ── Game Logic ──────────────────────────────────────────────────────────────
 function handleUpdate(data) {
   if (gameOver) return;
   phoneConnected = true;
+
   if (typeof data.gx === "number") tankX = data.gx;
   if (typeof data.gy === "number") tankY = data.gy;
   if (typeof data.x === "number") tankX = data.x;
@@ -130,16 +162,7 @@ function handleUpdate(data) {
   }
 }
 
-socket.on("update", (data) => handleUpdate(data));
-
-// ── Bullets ───────────────────────────────────────────────────────────────────
-const bullets = [];
-const BULLET_SIZE = 10;
-const BULLET_SPEED = 14;
-const MUZZLE_LEN = 36;
-
 function handleShoot(payload) {
-  if (gameOver) return;
   let dirX = typeof payload?.dirX === "number" ? payload.dirX : aimX;
   let dirY = typeof payload?.dirY === "number" ? payload.dirY : aimY;
 
@@ -162,28 +185,29 @@ function handleShoot(payload) {
   });
 }
 
-socket.on("shoot", (payload) => handleShoot(payload));
+function restartGame() {
+  score = 0;
+  lives = 5;
+  gameOver = false;
+  startTime = Date.now();
 
-// ── Enemies ───────────────────────────────────────────────────────────────────
-const enemies = [];
-const ENEMY_COLORS = ["#ff2d2d", "#ff7a00", "#ffd400"];
-const ENEMY_SPEED_MIN = 0.6;
-const ENEMY_SPEED_MAX = 1.2;
-const ENEMY_SIZE_MIN = 18;
-const ENEMY_SIZE_MAX = 34;
-const SPAWN_MARGIN = 60;
+  bullets.length = 0;
+  enemies.length = 0;
 
-// ── Game state ────────────────────────────────────────────────────────────────
-let score = 0;
-let lives = 5;
-let gameOver = false;
-let startTime = Date.now();
-let frameCount = 0;
-let phoneConnected = false;
+  tankX = 0;
+  tankY = 0;
+  aimX = 1;
+  aimY = 0;
 
+  startSpawnCycle();
+  requestAnimationFrame(draw);
+}
+
+// ── Enemies ─────────────────────────────────────────────────────────────────
 function rand(min, max) {
   return min + Math.random() * (max - min);
 }
+
 function pick(arr) {
   return arr[(Math.random() * arr.length) | 0];
 }
@@ -227,21 +251,31 @@ function getSpawnInterval() {
   return 2000 - difficulty * 1500;
 }
 
-function scheduleSpawn() {
-  setTimeout(() => {
-    if (!gameOver && phoneConnected) spawnEnemy();
-    if (!gameOver) scheduleSpawn();
-  }, getSpawnInterval());
+function startSpawnCycle() {
+  if (spawnTimeoutId) {
+    clearTimeout(spawnTimeoutId);
+  }
+
+  function scheduleSpawn() {
+    spawnTimeoutId = setTimeout(() => {
+      if (!gameOver && phoneConnected) {
+        spawnEnemy();
+      }
+      if (!gameOver) {
+        scheduleSpawn();
+      }
+    }, getSpawnInterval());
+  }
+
+  scheduleSpawn();
 }
-scheduleSpawn();
 
 function hit(ax, ay, as, bx, by, bs) {
   return Math.abs(ax - bx) * 2 < as + bs && Math.abs(ay - by) * 2 < as + bs;
 }
 
-// ── Main loop ─────────────────────────────────────────────────────────────────
+// ── Main Loop ────────────────────────────────────────────────────────────────
 function draw() {
-  frameCount++;
   const W = canvas.width;
   const H = canvas.height;
 
@@ -373,30 +407,13 @@ function draw() {
     ctx.fillText("GAME OVER", W / 2 - 150, H / 2);
     ctx.font = "18px system-ui";
     ctx.fillText(`final score: ${score}`, W / 2 - 60, H / 2 + 36);
-    ctx.fillText("Press R to restart", W / 2 - 85, H / 2 + 66);
+    ctx.fillText("Tap Restart on your phone", W / 2 - 120, H / 2 + 66);
     return;
   }
 
   requestAnimationFrame(draw);
 }
 
-window.addEventListener("keydown", (e) => {
-  if (e.key === "r" || e.key === "R") {
-    e.preventDefault();
-    bgMusic.play().catch(() => {});
-    score = 0;
-    lives = 5;
-    gameOver = false;
-    startTime = Date.now();
-    frameCount = 0;
-    bullets.length = 0;
-    enemies.length = 0;
-    tankX = 0;
-    tankY = 0;
-    aimX = 1;
-    aimY = 0;
-    requestAnimationFrame(draw);
-  }
-});
-
+// ── Start Game ────────────────────────────────────────────────────────────────
+startSpawnCycle();
 draw();

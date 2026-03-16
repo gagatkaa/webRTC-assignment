@@ -35,7 +35,6 @@ io.on("connection", (socket) => {
     socket.emit("your-id", sessionId);
   });
 
-
   socket.on("peerOffer", (targetSessionId, offer) => {
     const target = sessionMap[targetSessionId];
     if (!target) return;
@@ -69,10 +68,14 @@ io.on("connection", (socket) => {
   socket.on("webrtcSignal", (targetId, signalData) => {
     const bySession = sessionMap[targetId];
     if (bySession) {
-      console.log(`webrtcSignal: relaying to session ${targetId} (socket ${bySession.socketId}), type: ${signalData?.type}`);
+      console.log(
+        `webrtcSignal: relaying to session ${targetId} (socket ${bySession.socketId}), type: ${signalData?.type}`,
+      );
       io.to(bySession.socketId).emit("webrtcSignal", signalData, socket.id);
     } else {
-      console.log(`webrtcSignal: relaying to raw socket ${targetId}, type: ${signalData?.type}`);
+      console.log(
+        `webrtcSignal: relaying to raw socket ${targetId}, type: ${signalData?.type}`,
+      );
       io.to(targetId).emit("webrtcSignal", signalData, socket.id);
     }
   });
@@ -99,6 +102,12 @@ io.on("connection", (socket) => {
     }
 
     io.to(target.socketId).emit("update", data);
+  });
+
+  socket.on("restart", (targetSessionId) => {
+    const target = sessionMap[targetSessionId];
+    if (!target) return;
+    io.to(target.socketId).emit("restart");
   });
 
   socket.on("disconnect", () => {
