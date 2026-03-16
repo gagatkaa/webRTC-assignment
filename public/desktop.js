@@ -31,7 +31,7 @@ socket.on("webrtcSignal", (signalData, fromSocketId) => {
 
     peer.on("connect", () => {
       phoneConnected = true;
-      startCountdown();
+      showReadyScreen();
     });
 
     peer.on("data", (data) => {
@@ -94,14 +94,30 @@ const qrEl = document.getElementById("qr");
 const overlay = document.getElementById("overlay");
 const countdownEl = document.getElementById("countdown");
 const countdownNumber = document.getElementById("countdown-number");
+const readyScreenEl = document.getElementById("ready-screen");
 
 // ── Game State ────────────────────────────────────────────────────────────────
 let gameStarted = false;
 
+function showReadyScreen() {
+  if (gameStarted) return;
+  overlay.classList.add("hidden");
+  readyScreenEl.classList.add("show");
+}
+
+function handleLetsGo() {
+  readyScreenEl.classList.remove("show");
+  // User gesture unlocks audio — prime all sounds
+  [enemyHitSound, playerHitSound].forEach(s => {
+    s.play().then(() => { s.pause(); s.currentTime = 0; }).catch(() => {});
+  });
+  if (musicPlaying) bgMusic.play().catch(() => {});
+  startCountdown();
+}
+
 function startCountdown() {
   if (gameStarted) return;
 
-  overlay.classList.add("hidden");
   countdownEl.classList.add("show");
 
   let count = 3;
@@ -118,7 +134,6 @@ function startCountdown() {
       countdownEl.classList.remove("show");
       startTime = Date.now();
       gameStarted = true;
-      bgMusic.play().catch(() => {});
     }
   }, 1000);
 }
@@ -131,9 +146,33 @@ bgMusic.addEventListener("error", (e) =>
   console.error("Music error:", e, bgMusic.error),
 );
 
+let musicPlaying = true; // default: music will play when game starts
+
 const enemyHitSound = new Audio("/enemyHitSound.wav");
 const playerHitSound = new Audio("/playerHitSound.wav");
 enemyHitSound.volume = 0.3;
+
+// ── Music button hit area (updated each frame) ────────────────────────────────
+const musicBtn = { x: 110, y: 44, w: 22, h: 22 };
+
+canvas.addEventListener("click", (e) => {
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  if (
+    mx >= musicBtn.x &&
+    mx <= musicBtn.x + musicBtn.w &&
+    my >= musicBtn.y &&
+    my <= musicBtn.y + musicBtn.h
+  ) {
+    musicPlaying = !musicPlaying;
+    if (musicPlaying) {
+      if (gameStarted && !gameOver) bgMusic.play().catch(() => {});
+    } else {
+      bgMusic.pause();
+    }
+  }
+});
 
 // ── QR / overlay ─────────────────────────────────────────────────────────────
 socket.on("your-id", (myId) => {
@@ -228,6 +267,8 @@ function restartGame() {
   tankY = 0;
   aimX = 1;
   aimY = 0;
+
+  if (musicPlaying) bgMusic.play().catch(() => {});
 
   startSpawnCycle();
   requestAnimationFrame(draw);
@@ -462,10 +503,39 @@ function draw() {
     "❤️".repeat(Math.max(0, lives)) + "🖤".repeat(Math.max(0, 5 - lives));
   ctx.fillText(heartsDisplay, W - 20, 38);
 
+  // WebRTC indicator
   ctx.textAlign = "left";
   ctx.font = "12px system-ui";
   ctx.fillStyle = peer?.connected ? "#2d7" : "#f80";
   ctx.fillText(peer?.connected ? "● WebRTC" : "● Socket", 20, 58);
+
+  // Music toggle button — small square icon
+  const bx = musicBtn.x;
+  const by = musicBtn.y;
+  const bs = musicBtn.w; // square size
+  ctx.fillStyle = "rgba(255,255,255,0.08)";
+  ctx.strokeStyle = "#555";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.roundRect(bx, by, bs, bs, 3);
+  ctx.fill();
+  ctx.stroke();
+  const cx2 = bx + bs / 2;
+  const cy2 = by + bs / 2;
+  ctx.fillStyle = "#ccc";
+  if (musicPlaying) {
+    // Pause icon: two vertical bars
+    ctx.fillRect(cx2 - 4, cy2 - 4, 3, 8);
+    ctx.fillRect(cx2 + 1, cy2 - 4, 3, 8);
+  } else {
+    // Play icon: triangle
+    ctx.beginPath();
+    ctx.moveTo(cx2 - 3, cy2 - 5);
+    ctx.lineTo(cx2 + 5, cy2);
+    ctx.lineTo(cx2 - 3, cy2 + 5);
+    ctx.closePath();
+    ctx.fill();
+  }
 
   ctx.textAlign = "left";
 
