@@ -467,7 +467,6 @@ function draw() {
     ctx.fillRect(0, 0, W, H);
     ctx.fillStyle = "white";
     ctx.font = "bold 28px system-ui";
-    ctx.fillText("Waiting for phone to connect...", W / 2 - 200, H / 2);
   }
 
   if (gameOver) {
