@@ -1,6 +1,5 @@
 const socket = io({ reconnection: true });
 
-// ── Session ID ───────────────────────────────────────────────────────────────
 let sessionId = localStorage.getItem("desktopSessionId");
 if (!sessionId) {
   sessionId = crypto.randomUUID();
@@ -11,79 +10,85 @@ socket.on("connect", () => {
   socket.emit("register", sessionId);
 });
 
-// ── WebRTC ───────────────────────────────────────────────────────────────────
+// ── WebRTC ────────────────────────────────────────────────────────────────────
+let peer = null;
+let controllerSocketId = null;
 
-const RTC_CONFIG = {
-  iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
-};
+socket.on("webrtcSignal", (signalData, fromSocketId) => {
+  if (!peer) {
+    controllerSocketId = fromSocketId;
+    peer = new SimplePeer({
+      initiator: false,
+      trickle: true,
+      config: {
+        iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+      },
+    });
 
-let pc = null; 
-let dataChannel = null; 
-let controllerSocketId = null; 
+    peer.on("signal", (data) => {
+      socket.emit("webrtcSignal", controllerSocketId, data);
+    });
 
-
-socket.on("peerOffer", async (_targetSessionId, offer, fromSocketId) => {
-  console.log("Received peerOffer from controller socket:", fromSocketId);
-  controllerSocketId = fromSocketId;
-
-
-  if (pc) pc.close();
-
-  pc = new RTCPeerConnection(RTC_CONFIG);
-
-
-  pc.ondatachannel = (event) => {
-    dataChannel = event.channel;
-    dataChannel.onopen = () => {
-      console.log("✅ WebRTC data channel open");
+    peer.on("connect", () => {
       phoneConnected = true;
-    };
-    dataChannel.onclose = () => {
-      console.log("⚠️ WebRTC data channel closed — falling back to socket");
-      dataChannel = null;
-    };
-    dataChannel.onmessage = (e) => {
-      handleDataChannelMessage(JSON.parse(e.data));
-    };
-  };
+    });
 
+    peer.on("data", (data) => {
+      try {
+        handleDataChannelMessage(JSON.parse(data));
+      } catch (e) {
+        console.warn("Failed to parse data:", e);
+      }
+    });
 
-  pc.onicecandidate = (event) => {
-    if (event.candidate) {
-      socket.emit("peerIce", controllerSocketId, event.candidate);
-    }
-  };
+    peer.on("close", () => {
+      console.log("Peer connection closed");
+    });
 
-  pc.onconnectionstatechange = () => {
-    console.log("PC state:", pc.connectionState);
-  };
+    peer.on("error", (err) => {
+      console.error("Peer error:", err.code);
+    });
+  }
 
-  await pc.setRemoteDescription(new RTCSessionDescription(offer));
-  const answer = await pc.createAnswer();
-  await pc.setLocalDescription(answer);
-
-  
-  socket.emit("peerAnswer", controllerSocketId, answer);
+  peer.signal(signalData);
 });
 
+// ── Game State ────────────────────────────────────────────────────────────────
+const canvas = document.getElementById("tank");
+const ctx = canvas.getContext("2d");
 
-socket.on("peerIce", async (_targetId, candidate, _fromSocketId) => {
-  if (!pc) return;
-  try {
-    await pc.addIceCandidate(new RTCIceCandidate(candidate));
-  } catch (e) {
-    console.warn("ICE candidate error:", e);
-  }
-});
+let tankX = 0;
+let tankY = 0;
+let aimX = 1;
+let aimY = 0;
 
+let score = 0;
+let lives = 5;
+let gameOver = false;
+let startTime = Date.now();
+let phoneConnected = false;
 
-function handleDataChannelMessage(msg) {
-  if (msg.type === "update") {
-    handleUpdate(msg.data);
-  } else if (msg.type === "shoot") {
-    handleShoot(msg.data);
-  }
-}
+const bullets = [];
+const enemies = [];
+let spawnTimeoutId = null;
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+const BULLET_SIZE = 10;
+const BULLET_SPEED = 14;
+const MUZZLE_LEN = 36;
+
+const ENEMY_COLORS = ["#ff2d2d", "#ff7a00", "#ffd400"];
+const ENEMY_SPEED_MIN = 0.6;
+const ENEMY_SPEED_MAX = 1.2;
+const ENEMY_SIZE_MIN = 18;
+const ENEMY_SIZE_MAX = 34;
+const SPAWN_MARGIN = 60;
+
+// ── DOM Elements ────────────────────────────────────────────────────────────
+const statusEl = document.getElementById("status");
+const urlEl = document.getElementById("url");
+const qrEl = document.getElementById("qr");
+const hideBtn = document.getElementById("hide");
 
 // ── Music ────────────────────────────────────────────────────────────────────
 const bgMusic = new Audio("/music.mp3");
@@ -92,13 +97,6 @@ bgMusic.volume = 0.4;
 bgMusic.addEventListener("error", (e) =>
   console.error("Music error:", e, bgMusic.error),
 );
-
-const statusEl = document.getElementById("status");
-const urlEl = document.getElementById("url");
-const qrEl = document.getElementById("qr");
-const hideBtn = document.getElementById("hide");
-const canvas = document.getElementById("tank");
-const ctx = canvas.getContext("2d");
 
 // ── QR / overlay ─────────────────────────────────────────────────────────────
 socket.on("your-id", (myId) => {
@@ -119,12 +117,7 @@ hideBtn.addEventListener("click", () => {
   bgMusic.play().catch((err) => console.error("Music failed:", err));
 });
 
-// ── Canvas / tank rendering ───────────────────────────────────────────────────
-let tankX = 0;
-let tankY = 0;
-let aimX = 1;
-let aimY = 0;
-
+// ── Resize ───────────────────────────────────────────────────────────────────
 function resize() {
   canvas.width = window.innerWidth;
   canvas.height = window.innerHeight;
@@ -132,9 +125,29 @@ function resize() {
 window.addEventListener("resize", resize);
 resize();
 
+// ── Socket Handlers ────────────────────────────────────────────────────────
+socket.on("update", (data) => handleUpdate(data));
+socket.on("shoot", (payload) => {
+  console.log("Received shoot via socket:", payload);
+  handleShoot(payload);
+});
+socket.on("restart", () => restartGame());
+
+function handleDataChannelMessage(msg) {
+  if (msg.type === "update") {
+    handleUpdate(msg.data);
+  } else if (msg.type === "shoot") {
+    handleShoot(msg.data);
+  } else if (msg.type === "restart") {
+    restartGame();
+  }
+}
+
+// ── Game Logic ──────────────────────────────────────────────────────────────
 function handleUpdate(data) {
   if (gameOver) return;
   phoneConnected = true;
+
   if (typeof data.gx === "number") tankX = data.gx;
   if (typeof data.gy === "number") tankY = data.gy;
   if (typeof data.x === "number") tankX = data.x;
@@ -149,17 +162,7 @@ function handleUpdate(data) {
   }
 }
 
-
-socket.on("update", (data) => handleUpdate(data));
-
-// ── Bullets ───────────────────────────────────────────────────────────────────
-const bullets = [];
-const BULLET_SIZE = 10;
-const BULLET_SPEED = 14;
-const MUZZLE_LEN = 36;
-
 function handleShoot(payload) {
-  if (gameOver) return;
   let dirX = typeof payload?.dirX === "number" ? payload.dirX : aimX;
   let dirY = typeof payload?.dirY === "number" ? payload.dirY : aimY;
 
@@ -182,29 +185,29 @@ function handleShoot(payload) {
   });
 }
 
+function restartGame() {
+  score = 0;
+  lives = 5;
+  gameOver = false;
+  startTime = Date.now();
 
-socket.on("shoot", (payload) => handleShoot(payload));
+  bullets.length = 0;
+  enemies.length = 0;
 
-// ── Enemies ───────────────────────────────────────────────────────────────────
-const enemies = [];
-const ENEMY_COLORS = ["#ff2d2d", "#ff7a00", "#ffd400"];
-const ENEMY_SPEED_MIN = 0.6;
-const ENEMY_SPEED_MAX = 1.2;
-const ENEMY_SIZE_MIN = 18;
-const ENEMY_SIZE_MAX = 34;
-const SPAWN_MARGIN = 60;
+  tankX = 0;
+  tankY = 0;
+  aimX = 1;
+  aimY = 0;
 
-// ── Game state ────────────────────────────────────────────────────────────────
-let score = 0;
-let lives = 5;
-let gameOver = false;
-let startTime = Date.now();
-let frameCount = 0;
-let phoneConnected = false;
+  startSpawnCycle();
+  requestAnimationFrame(draw);
+}
 
+// ── Enemies ─────────────────────────────────────────────────────────────────
 function rand(min, max) {
   return min + Math.random() * (max - min);
 }
+
 function pick(arr) {
   return arr[(Math.random() * arr.length) | 0];
 }
@@ -248,21 +251,31 @@ function getSpawnInterval() {
   return 2000 - difficulty * 1500;
 }
 
-function scheduleSpawn() {
-  setTimeout(() => {
-    if (!gameOver && phoneConnected) spawnEnemy();
-    if (!gameOver) scheduleSpawn();
-  }, getSpawnInterval());
+function startSpawnCycle() {
+  if (spawnTimeoutId) {
+    clearTimeout(spawnTimeoutId);
+  }
+
+  function scheduleSpawn() {
+    spawnTimeoutId = setTimeout(() => {
+      if (!gameOver && phoneConnected) {
+        spawnEnemy();
+      }
+      if (!gameOver) {
+        scheduleSpawn();
+      }
+    }, getSpawnInterval());
+  }
+
+  scheduleSpawn();
 }
-scheduleSpawn();
 
 function hit(ax, ay, as, bx, by, bs) {
   return Math.abs(ax - bx) * 2 < as + bs && Math.abs(ay - by) * 2 < as + bs;
 }
 
-// ── Main loop ─────────────────────────────────────────────────────────────────
+// ── Main Loop ────────────────────────────────────────────────────────────────
 function draw() {
-  frameCount++;
   const W = canvas.width;
   const H = canvas.height;
 
@@ -371,15 +384,10 @@ function draw() {
     "❤️".repeat(Math.max(0, lives)) + "🖤".repeat(Math.max(0, 5 - lives));
   ctx.fillText(heartsDisplay, W - 20, 38);
 
-  // WebRTC connection indicator
   ctx.textAlign = "left";
   ctx.font = "12px system-ui";
-  ctx.fillStyle = dataChannel?.readyState === "open" ? "#2d7" : "#f80";
-  ctx.fillText(
-    dataChannel?.readyState === "open" ? "● WebRTC" : "● Socket",
-    20,
-    58,
-  );
+  ctx.fillStyle = peer?.connected ? "#2d7" : "#f80";
+  ctx.fillText(peer?.connected ? "● WebRTC" : "● Socket", 20, 58);
 
   ctx.textAlign = "left";
 
@@ -399,30 +407,13 @@ function draw() {
     ctx.fillText("GAME OVER", W / 2 - 150, H / 2);
     ctx.font = "18px system-ui";
     ctx.fillText(`final score: ${score}`, W / 2 - 60, H / 2 + 36);
-    ctx.fillText("Press R to restart", W / 2 - 85, H / 2 + 66);
+    ctx.fillText("Tap Restart on your phone", W / 2 - 120, H / 2 + 66);
     return;
   }
 
   requestAnimationFrame(draw);
 }
 
-window.addEventListener("keydown", (e) => {
-  if (e.key === "r" || e.key === "R") {
-    e.preventDefault();
-    bgMusic.play().catch(() => {});
-    score = 0;
-    lives = 5;
-    gameOver = false;
-    startTime = Date.now();
-    frameCount = 0;
-    bullets.length = 0;
-    enemies.length = 0;
-    tankX = 0;
-    tankY = 0;
-    aimX = 1;
-    aimY = 0;
-    requestAnimationFrame(draw);
-  }
-});
-
+// ── Start Game ────────────────────────────────────────────────────────────────
+startSpawnCycle();
 draw();
