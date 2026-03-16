@@ -74,6 +74,68 @@
             color: #aaa;
         }
 
+        /* ── Ready screen ── */
+        #ready-screen {
+            position: fixed;
+            inset: 0;
+            z-index: 15;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0, 0, 0, 0.88);
+        }
+
+        #ready-screen.show {
+            display: flex;
+        }
+
+        #ready-title {
+            font-family: "Press Start 2P", monospace;
+            font-size: 3.5rem;
+            color: white;
+            text-shadow: 3px 3px 0 #2d7;
+            margin-bottom: 48px;
+            letter-spacing: 2px;
+            animation: pulse 1.2s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                transform: scale(1);
+            }
+
+            50% {
+                transform: scale(1.04);
+            }
+        }
+
+        #lets-go-btn {
+            font-family: "Press Start 2P", monospace;
+            font-size: 1.6rem;
+            color: #111;
+            background: #4a9;
+            border: none;
+            border-radius: 8px;
+            padding: 20px 48px;
+            cursor: pointer;
+            box-shadow: 0 6px 0 #2d7;
+            letter-spacing: 2px;
+            transition: transform 0.08s, box-shadow 0.08s;
+        }
+
+        #lets-go-btn:hover {
+            background: #5bc;
+        }
+
+        #lets-go-btn:active {
+            transform: translateY(4px);
+            box-shadow: 0 2px 0 #2d7;
+        }
+
+        /* ── Countdown ── */
         #countdown {
             position: fixed;
             inset: 0;
@@ -104,6 +166,11 @@
         <div id="logo">TILT SMASH</div>
         <div id="status">Scan to connect your phone:</div>
         <div id="qr"></div>
+    </div>
+
+    <div id="ready-screen">
+        <div id="ready-title">ARE YOU READY?</div>
+        <button id="lets-go-btn" onclick="handleLetsGo()">LET'S GO !!</button>
     </div>
 
     <div id="countdown">
