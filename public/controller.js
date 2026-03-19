@@ -22,23 +22,11 @@ if (!targetId) {
   enableBtn.disabled = true;
 }
 
-let sessionId = localStorage.getItem("controllerSessionId");
-if (!sessionId) {
-  sessionId = crypto.randomUUID();
-  localStorage.setItem("controllerSessionId", sessionId);
-}
-log("Session ID: " + sessionId);
-
 const socket = io({ reconnection: true });
 
 socket.on("connect", () => {
   log("Socket " + socket.id);
-  socket.emit("register", sessionId);
   statusEl.textContent = "Connected! Press Enable Motion.";
-});
-
-socket.on("your-id", (confirmedId) => {
-  log("Session confirmed: " + confirmedId);
 });
 
 socket.on("connect_error", (err) => {
@@ -51,6 +39,7 @@ socket.on("disconnect", (reason) => {
   statusEl.textContent = "Disconnected — reconnecting...";
 });
 
+// ── WebRTC ────────────────────────────────────────────────────────────────────
 let peer = null;
 
 function startWebRTC() {
@@ -67,8 +56,8 @@ function startWebRTC() {
   });
 
   peer.on("signal", (data) => {
-    console.log("Sending signal, type:", data.type);
-    socket.emit("webrtcSignal", targetId, data);
+    log("Sending signal type: " + data.type);
+    socket.emit("signal", targetId, data);
   });
 
   peer.on("connect", () => {
@@ -81,7 +70,8 @@ function startWebRTC() {
   });
 
   peer.on("close", () => {
-    log("Peer connection closed");
+    log("Peer closed");
+    peer = null;
   });
 
   peer.on("error", (err) => {
@@ -89,20 +79,19 @@ function startWebRTC() {
   });
 }
 
-socket.on("webrtcSignal", (signalData) => {
+// Receive answer signal from desktop
+socket.on("signal", (myId, signalData, fromSocketId) => {
   if (peer) {
     peer.signal(signalData);
   }
 });
 
+// ── Send data (WebRTC only) ───────────────────────────────────────────────────
 function sendData(type, payload) {
   if (peer?.connected) {
     peer.send(JSON.stringify({ type, data: payload }));
   } else {
-    console.log("Socket fallback for:", type);
-    if (type === "update") socket.emit("update", targetId, payload);
-    else if (type === "shoot") socket.emit("shoot", targetId, payload);
-    else if (type === "restart") socket.emit("restart", targetId);
+    log("WebRTC not ready, dropping: " + type);
   }
 }
 
@@ -111,6 +100,7 @@ function sendMove(gx, gy) {
   sendData("update", { gx, gy });
 }
 
+// ── Auto-fire ─────────────────────────────────────────────────────────────────
 let aimX = 0;
 let aimY = 0;
 
@@ -128,9 +118,7 @@ function maybeStartAutoFire() {
   shootTimer = setInterval(() => {
     if (!targetId) return;
     const mag = Math.hypot(aimX, aimY);
-    console.log("Auto-fire check: aimX:", aimX, "aimY:", aimY, "mag:", mag);
     if (mag < MIN_AIM_MAG) return;
-    console.log("Auto-fire firing!");
     sendData("shoot", { dirX: aimX / mag, dirY: aimY / mag, t: Date.now() });
   }, SHOOT_EVERY_MS);
   log("Auto-fire every " + SHOOT_EVERY_MS + "ms");
@@ -143,13 +131,12 @@ function stopAutoFire() {
   log("Auto-fire stopped");
 }
 
+// ── Enable button ─────────────────────────────────────────────────────────────
 const noSleep = new NoSleep();
 
 enableBtn.addEventListener("click", async () => {
   noSleep.enable();
   log("Button clicked, protocol=" + location.protocol);
-
-  let useMotion = true;
 
   if (
     typeof DeviceOrientationEvent !== "undefined" &&
@@ -159,15 +146,15 @@ enableBtn.addEventListener("click", async () => {
     try {
       const perm = await DeviceOrientationEvent.requestPermission();
       log("Permission: " + perm);
-      useMotion = perm === "granted";
+      if (perm !== "granted") {
+        log("Motion denied — will fall back to joystick");
+      }
     } catch (e) {
       log("Permission error: " + e.message);
-      useMotion = false;
     }
   }
 
-  await startWebRTC();
-
+  startWebRTC();
   startMotion();
   restartBtn.style.display = "inline-block";
 });
@@ -177,6 +164,7 @@ restartBtn.addEventListener("click", () => {
   sendData("restart", {});
 });
 
+// ── Motion / Joystick ─────────────────────────────────────────────────────────
 function startMotion() {
   enableBtn.style.display = "none";
   statusEl.textContent = "Tilt your phone to control the tank!";
@@ -206,7 +194,7 @@ function startMotion() {
 
   setTimeout(() => {
     if (count === 0) {
-      log("No gyro events after 2s — showing joystick as fallback.");
+      log("No gyro events after 2s — showing joystick.");
       showJoystick();
     }
   }, 2000);
@@ -218,6 +206,7 @@ function showJoystick() {
   maybeStartAutoFire();
 }
 
+// ── Joystick touch ────────────────────────────────────────────────────────────
 const RADIUS = 60;
 let originX = 0,
   originY = 0;
@@ -261,6 +250,7 @@ joystickEl.addEventListener("touchend", () => {
   setAim(0, 0);
 });
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
 function clamp(v, min, max) {
   return Math.max(min, Math.min(max, v));
 }

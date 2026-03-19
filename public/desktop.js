@@ -1,20 +1,10 @@
 const socket = io({ reconnection: true });
 
-let sessionId = localStorage.getItem("desktopSessionId");
-if (!sessionId) {
-  sessionId = crypto.randomUUID();
-  localStorage.setItem("desktopSessionId", sessionId);
-}
-
-socket.on("connect", () => {
-  socket.emit("register", sessionId);
-});
-
 // ── WebRTC ────────────────────────────────────────────────────────────────────
 let peer = null;
 let controllerSocketId = null;
 
-socket.on("webrtcSignal", (signalData, fromSocketId) => {
+socket.on("signal", (peerId, signalData, fromSocketId) => {
   if (!peer) {
     controllerSocketId = fromSocketId;
     peer = new SimplePeer({
@@ -26,7 +16,7 @@ socket.on("webrtcSignal", (signalData, fromSocketId) => {
     });
 
     peer.on("signal", (data) => {
-      socket.emit("webrtcSignal", controllerSocketId, data);
+      socket.emit("signal", controllerSocketId, data);
     });
 
     peer.on("connect", () => {
@@ -44,6 +34,7 @@ socket.on("webrtcSignal", (signalData, fromSocketId) => {
 
     peer.on("close", () => {
       console.log("Peer connection closed");
+      peer = null;
     });
 
     peer.on("error", (err) => {
@@ -107,9 +98,13 @@ function showReadyScreen() {
 
 function handleLetsGo() {
   readyScreenEl.classList.remove("show");
-  // User gesture unlocks audio — prime all sounds
-  [enemyHitSound, playerHitSound].forEach(s => {
-    s.play().then(() => { s.pause(); s.currentTime = 0; }).catch(() => {});
+  [enemyHitSound, playerHitSound].forEach((s) => {
+    s.play()
+      .then(() => {
+        s.pause();
+        s.currentTime = 0;
+      })
+      .catch(() => {});
   });
   if (musicPlaying) bgMusic.play().catch(() => {});
   startCountdown();
@@ -146,13 +141,13 @@ bgMusic.addEventListener("error", (e) =>
   console.error("Music error:", e, bgMusic.error),
 );
 
-let musicPlaying = true; // default: music will play when game starts
+let musicPlaying = true;
 
 const enemyHitSound = new Audio("/enemyHitSound.wav");
 const playerHitSound = new Audio("/playerHitSound.wav");
 enemyHitSound.volume = 0.3;
 
-// ── Music button hit area (updated each frame) ────────────────────────────────
+// ── Music button hit area ────────────────────────────────────────────────────
 const musicBtn = { x: 110, y: 44, w: 22, h: 22 };
 
 canvas.addEventListener("click", (e) => {
@@ -175,8 +170,9 @@ canvas.addEventListener("click", (e) => {
 });
 
 // ── QR / overlay ─────────────────────────────────────────────────────────────
-socket.on("your-id", (myId) => {
-  const controllerURL = `${location.protocol}//${location.host}/controller.html?target=${sessionId}`;
+socket.on("connect", () => {
+  // Build the controller URL using OUR socket id as the target
+  const controllerURL = `${location.protocol}//${location.host}/controller.html?target=${socket.id}`;
 
   statusEl.textContent = "Scan to connect your phone:";
 
@@ -194,14 +190,7 @@ function resize() {
 window.addEventListener("resize", resize);
 resize();
 
-// ── Socket Handlers ────────────────────────────────────────────────────────
-socket.on("update", (data) => handleUpdate(data));
-socket.on("shoot", (payload) => {
-  console.log("Received shoot via socket:", payload);
-  handleShoot(payload);
-});
-socket.on("restart", () => restartGame());
-
+// ── Game Logic ──────────────────────────────────────────────────────────────
 function handleDataChannelMessage(msg) {
   if (msg.type === "update") {
     handleUpdate(msg.data);
@@ -212,7 +201,6 @@ function handleDataChannelMessage(msg) {
   }
 }
 
-// ── Game Logic ──────────────────────────────────────────────────────────────
 function handleUpdate(data) {
   if (gameOver) return;
   phoneConnected = true;
@@ -340,18 +328,12 @@ function getSpawnInterval() {
 }
 
 function startSpawnCycle() {
-  if (spawnTimeoutId) {
-    clearTimeout(spawnTimeoutId);
-  }
+  if (spawnTimeoutId) clearTimeout(spawnTimeoutId);
 
   function scheduleSpawn() {
     spawnTimeoutId = setTimeout(() => {
-      if (!gameOver && gameStarted) {
-        spawnEnemy();
-      }
-      if (!gameOver) {
-        scheduleSpawn();
-      }
+      if (!gameOver && gameStarted) spawnEnemy();
+      if (!gameOver) scheduleSpawn();
     }, getSpawnInterval());
   }
 
@@ -369,7 +351,6 @@ function draw() {
 
   ctx.clearRect(0, 0, W, H);
 
-  // grid
   ctx.strokeStyle = "#222";
   ctx.lineWidth = 1;
   for (let x = 0; x < W; x += 40) {
@@ -389,17 +370,14 @@ function draw() {
   const cy = H / 2 + tankY * (H / 2 - 40);
   const tankSize = 48;
 
-  // update bullets
   for (let i = bullets.length - 1; i >= 0; i--) {
     const b = bullets[i];
     b.x += b.vx;
     b.y += b.vy;
-    if (b.x < -80 || b.x > W + 80 || b.y < -80 || b.y > H + 80) {
+    if (b.x < -80 || b.x > W + 80 || b.y < -80 || b.y > H + 80)
       bullets.splice(i, 1);
-    }
   }
 
-  // update enemies
   for (let i = enemies.length - 1; i >= 0; i--) {
     const e = enemies[i];
     const dx = cx - e.x;
@@ -417,7 +395,6 @@ function draw() {
     }
   }
 
-  // bullet vs enemy
   for (let ei = enemies.length - 1; ei >= 0; ei--) {
     const e = enemies[ei];
     for (let bi = bullets.length - 1; bi >= 0; bi--) {
@@ -438,13 +415,10 @@ function draw() {
     }
   }
 
-  // draw bullets
   ctx.fillStyle = BULLET_COLOR;
-  for (const b of bullets) {
+  for (const b of bullets)
     ctx.fillRect(b.x - b.size / 2, b.y - b.size / 2, b.size, b.size);
-  }
 
-  // update and draw particles
   for (let i = particles.length - 1; i >= 0; i--) {
     const p = particles[i];
     p.x += p.vx;
@@ -460,17 +434,14 @@ function draw() {
   }
   ctx.globalAlpha = 1;
 
-  // draw enemies
   for (const e of enemies) {
     ctx.fillStyle = e.color;
     ctx.fillRect(e.x - e.size / 2, e.y - e.size / 2, e.size, e.size);
   }
 
-  // tank body
   ctx.fillStyle = "#4a9";
   ctx.fillRect(cx - tankSize / 2, cy - tankSize / 2, tankSize, tankSize);
 
-  // barrel
   ctx.strokeStyle = "#2d7";
   ctx.lineWidth = 8;
   ctx.beginPath();
@@ -478,7 +449,6 @@ function draw() {
   ctx.lineTo(cx + aimX * MUZZLE_LEN, cy + aimY * MUZZLE_LEN);
   ctx.stroke();
 
-  // HUD
   ctx.fillStyle = "rgba(0,0,0,0.45)";
   ctx.fillRect(0, 0, W, 64);
 
@@ -507,12 +477,12 @@ function draw() {
   ctx.textAlign = "left";
   ctx.font = "12px system-ui";
   ctx.fillStyle = peer?.connected ? "#2d7" : "#f80";
-  ctx.fillText(peer?.connected ? "● WebRTC" : "● Socket", 20, 58);
+  ctx.fillText(peer?.connected ? "● WebRTC" : "● Waiting...", 20, 58);
 
-  // Music toggle button — small square icon
-  const bx = musicBtn.x;
-  const by = musicBtn.y;
-  const bs = musicBtn.w; // square size
+  // Music toggle
+  const bx = musicBtn.x,
+    by = musicBtn.y,
+    bs = musicBtn.w;
   ctx.fillStyle = "rgba(255,255,255,0.08)";
   ctx.strokeStyle = "#555";
   ctx.lineWidth = 1;
@@ -520,15 +490,13 @@ function draw() {
   ctx.roundRect(bx, by, bs, bs, 3);
   ctx.fill();
   ctx.stroke();
-  const cx2 = bx + bs / 2;
-  const cy2 = by + bs / 2;
+  const cx2 = bx + bs / 2,
+    cy2 = by + bs / 2;
   ctx.fillStyle = "#ccc";
   if (musicPlaying) {
-    // Pause icon: two vertical bars
     ctx.fillRect(cx2 - 4, cy2 - 4, 3, 8);
     ctx.fillRect(cx2 + 1, cy2 - 4, 3, 8);
   } else {
-    // Play icon: triangle
     ctx.beginPath();
     ctx.moveTo(cx2 - 3, cy2 - 5);
     ctx.lineTo(cx2 + 5, cy2);
@@ -539,36 +507,30 @@ function draw() {
 
   ctx.textAlign = "left";
 
-  if (!gameStarted) {
-    ctx.fillStyle = "rgba(0,0,0,0.45)";
-    ctx.fillRect(0, 0, W, H);
-    ctx.fillStyle = "white";
-    ctx.font = "bold 28px system-ui";
-  }
-
   if (gameOver) {
     ctx.fillStyle = "rgba(0,0,0,0.6)";
     ctx.fillRect(0, 0, W, H);
     ctx.fillStyle = "white";
     ctx.font = "bold 48px system-ui";
-    ctx.fillText("GAME OVER", W / 2 - 150, H / 2);
+    ctx.textAlign = "center";
+    ctx.fillText("GAME OVER", W / 2, H / 2);
     ctx.font = "18px system-ui";
-    ctx.fillText(`score: ${score}`, W / 2 - 40, H / 2 + 36);
+    ctx.fillText(`score: ${score}`, W / 2, H / 2 + 36);
     if (score >= bestScore && score > 0) {
       ctx.fillStyle = "#ffd400";
-      ctx.fillText("NEW BEST!", W / 2 - 55, H / 2 + 60);
+      ctx.fillText("NEW BEST!", W / 2, H / 2 + 60);
     } else {
       ctx.fillStyle = "#aaa";
-      ctx.fillText(`best: ${bestScore}`, W / 2 - 35, H / 2 + 60);
+      ctx.fillText(`best: ${bestScore}`, W / 2, H / 2 + 60);
     }
     ctx.fillStyle = "white";
-    ctx.fillText("Tap Restart on your phone", W / 2 - 120, H / 2 + 90);
+    ctx.fillText("Tap Restart on your phone", W / 2, H / 2 + 90);
     return;
   }
 
   requestAnimationFrame(draw);
 }
 
-// ── Start Game ────────────────────────────────────────────────────────────────
+// ── Start ────────────────────────────────────────────────────────────────────
 startSpawnCycle();
 draw();
