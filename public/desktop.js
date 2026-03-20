@@ -336,20 +336,28 @@ function restartGame() {
   score = 0;
   lives = 5;
   gameOver = false;
+  gameStarted = false;
   startTime = Date.now();
 
   bullets.length = 0;
   enemies.length = 0;
+  particles.length = 0;
 
   tankX = 0;
   tankY = 0;
   aimX = 1;
   aimY = 0;
 
-  if (musicPlaying) bgMusic.play().catch(() => {});
+  if (spawnTimeoutId) {
+    clearTimeout(spawnTimeoutId);
+    spawnTimeoutId = null;
+  }
 
-  startSpawnCycle();
-  requestAnimationFrame(draw);
+  if (musicPlaying) {
+    bgMusic.play().catch(() => {});
+  }
+
+  startCountdown();
 }
 
 // ── Enemies ─────────────────────────────────────────────────────────────────
