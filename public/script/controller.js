@@ -5,6 +5,8 @@ const debugEl = document.getElementById("debug");
 
 function log(message) {
   console.log(message);
+  if (!debugEl) return;
+  
   debugEl.innerHTML += `${message}<br>`;
 
   const lines = debugEl.innerHTML.split("<br>");
