@@ -30,7 +30,30 @@ body {
 #overlay.hidden {
   display: none;
 }
+#tagline {
+  font-family: "Press Start 2P", monospace;
+  font-size: 1.5rem;
+  color: #aaa;
+  text-align: center;
+  line-height: 2;
+  margin-bottom: 4rem;
+}
 
+#tips {
+  font-family: "Press Start 2P", monospace;
+  font-size: 1rem;
+  color: #2d7;
+  text-align: center;
+  line-height: 2.5;
+  margin-bottom: 4rem;
+}
+
+#tips p {
+  margin: 0;
+}
+#instructions-title {
+  color: white;
+}
 #url {
   color: #7df;
   word-break: break-all;
@@ -81,7 +104,7 @@ body {
 }
 
 #ready-title {
-  font-size: 3.5rem;
+  font-size: 5rem;
   color: white;
   text-shadow: 3px 3px 0 #2d7;
   margin-bottom: 48px;
