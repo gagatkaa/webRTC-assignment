@@ -1,4 +1,7 @@
-// require("dotenv").config();
+process.on("uncaughtException", (err) => {
+  console.error("CRASH:", err.message);
+});
+
 const express = require("express");
 const https = require("https");
 const fs = require("fs");
@@ -9,8 +12,8 @@ const app = express();
 const port = process.env.PORT || 3000;
 
 const options = {
-  key: fs.readFileSync("./certs/key.pem"),
-  cert: fs.readFileSync("./certs/cert.pem"),
+  key: fs.readFileSync("certs/localhost.key"),
+  cert: fs.readFileSync("certs/localhost.crt"),
 };
 
 const server = https.createServer(options, app);
@@ -19,16 +22,19 @@ const clients = {};
 
 app.use(express.static("public"));
 
-const emitClientList = () => {
+function emitClientList() {
   io.emit("clients", clients);
-};
+}
 
 io.on("connection", (socket) => {
   clients[socket.id] = { id: socket.id };
-  console.log(`A user connected: ${socket.id}`);
+  console.log(`User connected: ${socket.id}`);
   emitClientList();
 
   socket.on("signal", (peerId, signal) => {
+    console.log(
+      `Routing signal ${signal?.type || "unknown"} from ${socket.id} to ${peerId}`,
+    );
     io.to(peerId).emit("signal", peerId, signal, socket.id);
   });
 
@@ -41,6 +47,7 @@ io.on("connection", (socket) => {
 
 server.listen(port, "0.0.0.0", () => {
   const networkInterfaces = os.networkInterfaces();
+
   for (const interfaceName in networkInterfaces) {
     for (const iface of networkInterfaces[interfaceName]) {
       if (iface.family === "IPv4" && !iface.internal) {
@@ -48,5 +55,6 @@ server.listen(port, "0.0.0.0", () => {
       }
     }
   }
+
   console.log(`App listening on port ${port}`);
 });
