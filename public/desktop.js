@@ -80,11 +80,43 @@ function createPeerForOffer(fromSocketId) {
     peer.on("close", () => {
       console.log("Peer connection closed");
       peer = null;
+    phoneConnected = false;
     });
 
     peer.on("error", (err) => {
-      console.error("Peer error:", err.code);
+    console.error("Desktop peer error:", err);
+  });
+
+  const pc = peer._pc;
+  if (pc) {
+    pc.addEventListener("iceconnectionstatechange", () => {
+      console.log("Desktop ICE state:", pc.iceConnectionState);
     });
+
+    pc.addEventListener("connectionstatechange", () => {
+      console.log("Desktop PC state:", pc.connectionState);
+    });
+
+    pc.addEventListener("icegatheringstatechange", () => {
+      console.log("Desktop ICE gathering:", pc.iceGatheringState);
+    });
+  }
+}
+
+socket.on("signal", (_peerId, signalData, fromSocketId) => {
+  console.log(
+    "Signal received from phone:",
+    signalData.type,
+    signalData,
+    fromSocketId,
+  );
+
+  if (!peer) {
+    if (signalData.type !== "offer") {
+      console.warn("Ignoring non-offer because no peer exists yet.");
+      return;
+    }
+    createPeerForOffer(fromSocketId);
   }
 
   peer.signal(signalData);
