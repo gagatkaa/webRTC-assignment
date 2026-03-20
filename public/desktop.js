@@ -119,7 +119,11 @@ socket.on("signal", (_peerId, signalData, fromSocketId) => {
     createPeerForOffer(fromSocketId);
   }
 
+  try {
   peer.signal(signalData);
+  } catch (err) {
+    console.error("peer.signal error:", err);
+  }
 });
 
 // ── Game State ────────────────────────────────────────────────────────────────
