@@ -1,5 +1,16 @@
 const socket = io({ reconnection: true });
 
+// ── Canvas / DOM ──────────────────────────────────────────────────────────────
+const canvas = document.getElementById("tank");
+const ctx = canvas.getContext("2d");
+
+const statusEl = document.getElementById("status");
+const qrEl = document.getElementById("qr");
+const overlay = document.getElementById("overlay");
+const countdownEl = document.getElementById("countdown");
+const countdownNumber = document.getElementById("countdown-number");
+const readyScreenEl = document.getElementById("ready-screen");
+
 // ── WebRTC ────────────────────────────────────────────────────────────────────
 let peer = null;
 let controllerSocketId = null;
