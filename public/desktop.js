@@ -450,7 +450,7 @@ function hit(ax, ay, as, bx, by, bs) {
   return Math.abs(ax - bx) * 2 < as + bs && Math.abs(ay - by) * 2 < as + bs;
 }
 
-// ── Main Loop ────────────────────────────────────────────────────────────────
+// ── Main loop ─────────────────────────────────────────────────────────────────
 function draw() {
   const W = canvas.width;
   const H = canvas.height;
@@ -459,12 +459,14 @@ function draw() {
 
   ctx.strokeStyle = "#222";
   ctx.lineWidth = 1;
+
   for (let x = 0; x < W; x += 40) {
     ctx.beginPath();
     ctx.moveTo(x, 0);
     ctx.lineTo(x, H);
     ctx.stroke();
   }
+
   for (let y = 0; y < H; y += 40) {
     ctx.beginPath();
     ctx.moveTo(0, y);
@@ -476,46 +478,64 @@ function draw() {
   const cy = H / 2 + tankY * (H / 2 - 40);
   const tankSize = 48;
 
-  for (let i = bullets.length - 1; i >= 0; i--) {
-    const b = bullets[i];
-    b.x += b.vx;
-    b.y += b.vy;
-    if (b.x < -80 || b.x > W + 80 || b.y < -80 || b.y > H + 80)
+  for (let i = bullets.length - 1; i >= 0; i -= 1) {
+    const bullet = bullets[i];
+    bullet.x += bullet.vx;
+    bullet.y += bullet.vy;
+
+    if (
+      bullet.x < -80 ||
+      bullet.x > W + 80 ||
+      bullet.y < -80 ||
+      bullet.y > H + 80
+    ) {
       bullets.splice(i, 1);
   }
+  }
 
-  for (let i = enemies.length - 1; i >= 0; i--) {
-    const e = enemies[i];
-    const dx = cx - e.x;
-    const dy = cy - e.y;
+  for (let i = enemies.length - 1; i >= 0; i -= 1) {
+    const enemy = enemies[i];
+    const dx = cx - enemy.x;
+    const dy = cy - enemy.y;
     const mag = Math.hypot(dx, dy) || 1;
-    e.x += (dx / mag) * e.speed;
-    e.y += (dy / mag) * e.speed;
 
-    if (hit(e.x, e.y, e.size, cx, cy, tankSize)) {
+    enemy.x += (dx / mag) * enemy.speed;
+    enemy.y += (dy / mag) * enemy.speed;
+
+    if (hit(enemy.x, enemy.y, enemy.size, cx, cy, tankSize)) {
       enemies.splice(i, 1);
       lives -= 1;
+
       playerHitSound.currentTime = 0;
       playerHitSound.play().catch(() => {});
-      if (lives <= 0) gameOver = true;
+
+      if (lives <= 0) {
+        gameOver = true;
+      }
     }
   }
 
-  for (let ei = enemies.length - 1; ei >= 0; ei--) {
-    const e = enemies[ei];
-    for (let bi = bullets.length - 1; bi >= 0; bi--) {
-      const b = bullets[bi];
-      if (hit(e.x, e.y, e.size, b.x, b.y, b.size)) {
-        spawnParticles(e.x, e.y, e.color, e.size);
+  for (let ei = enemies.length - 1; ei >= 0; ei -= 1) {
+    const enemy = enemies[ei];
+
+    for (let bi = bullets.length - 1; bi >= 0; bi -= 1) {
+      const bullet = bullets[bi];
+
+      if (hit(enemy.x, enemy.y, enemy.size, bullet.x, bullet.y, bullet.size)) {
+        spawnParticles(enemy.x, enemy.y, enemy.color, enemy.size);
+
         enemyHitSound.currentTime = 0;
         enemyHitSound.play().catch(() => {});
+
         enemies.splice(ei, 1);
         bullets.splice(bi, 1);
         score += 1;
+
         if (score > bestScore) {
           bestScore = score;
-          localStorage.setItem("tiltSmashBest", bestScore);
+          localStorage.setItem("tiltSmashBest", String(bestScore));
         }
+
         break;
       }
     }
