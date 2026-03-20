@@ -9,6 +9,10 @@ function log(msg) {
   debugEl.scrollTop = debugEl.scrollHeight;
 }
 
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
 const params = new URLSearchParams(location.search);
 const targetId = params.get("target") || params.get("id");
 
@@ -34,6 +38,7 @@ socket.on("connect_error", (err) => {
 socket.on("disconnect", (reason) => {
   log("Socket disconnected: " + reason);
   stopAutoFire();
+  destroyPeer();
   statusEl.textContent = "Disconnected — reconnecting...";
 });
 
@@ -84,7 +89,8 @@ function createPeer() {
 
   peer.on("connect", () => {
     log("P2P connected!");
-    statusEl.textContent = "P2P connected!";
+    statusEl.textContent =
+      "P2P connected! Tilt your phone to control the tank.";
   });
 
   peer.on("data", (data) => {
@@ -184,31 +190,52 @@ function stopAutoFire() {
   log("Auto-fire stopped");
 }
 
-// ── Enable button ─────────────────────────────────────────────────────────────
+// ── Motion ────────────────────────────────────────────────────────────────────
 const noSleep = new NoSleep();
+let orientationListening = false;
+
+async function enableMotion() {
+  if (!targetId) return;
 
 enableBtn.addEventListener("click", async () => {
   noSleep.enable();
   log("Button clicked, protocol=" + location.protocol);
 
+  try {
   if (
-    typeof DeviceOrientationEvent !== "undefined" &&
-    typeof DeviceOrientationEvent.requestPermission === "function"
+      typeof DeviceMotionEvent !== "undefined" &&
+      typeof DeviceMotionEvent.requestPermission === "function"
   ) {
-    log("Requesting iOS permission...");
-    try {
-      const perm = await DeviceOrientationEvent.requestPermission();
-      log("Permission: " + perm);
-      if (perm !== "granted") {
-        log("Motion denied — will fall back to joystick");
-      }
-    } catch (e) {
-      log("Permission error: " + e.message);
-    }
-  }
+      log("Requesting iOS motion/orientation permissions...");
 
-  startWebRTC();
+      const [motionPermission, orientationPermission] = await Promise.all([
+        DeviceMotionEvent.requestPermission(),
+        DeviceOrientationEvent.requestPermission(),
+      ]);
+
+      log(`Motion permission: ${motionPermission}`);
+      log(`Orientation permission: ${orientationPermission}`);
+
+      if (
+        motionPermission !== "granted" ||
+        orientationPermission !== "granted"
+      ) {
+        statusEl.textContent = "Motion permission denied.";
+        return;
+      }
+    }
+
+    try {
+      await noSleep.enable();
+      log("NoSleep enabled");
+    } catch (err) {
+      log(`NoSleep error: ${err.message}`);
+    }
+
+    createPeer();
   startMotion();
+
+    enableBtn.style.display = "none";
   restartBtn.style.display = "inline-block";
   } catch (err) {
     log(`Permission error: ${err.message}`);
