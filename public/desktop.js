@@ -126,21 +126,19 @@ socket.on("signal", (_peerId, signalData, fromSocketId) => {
   }
 });
 
-// ── Game State ────────────────────────────────────────────────────────────────
-const canvas = document.getElementById("tank");
-const ctx = canvas.getContext("2d");
-
+// ── Game state ────────────────────────────────────────────────────────────────
 let tankX = 0;
 let tankY = 0;
 let aimX = 1;
 let aimY = 0;
 
 let score = 0;
-let bestScore = parseInt(localStorage.getItem("tiltSmashBest")) || 0;
+let bestScore = parseInt(localStorage.getItem("tiltSmashBest"), 10) || 0;
 let lives = 5;
 let gameOver = false;
 let startTime = Date.now();
 let phoneConnected = false;
+let gameStarted = false;
 
 const bullets = [];
 const enemies = [];
@@ -160,17 +158,7 @@ const ENEMY_SIZE_MIN = 18;
 const ENEMY_SIZE_MAX = 34;
 const SPAWN_MARGIN = 60;
 
-// ── DOM Elements ────────────────────────────────────────────────────────────
-const statusEl = document.getElementById("status");
-const qrEl = document.getElementById("qr");
-const overlay = document.getElementById("overlay");
-const countdownEl = document.getElementById("countdown");
-const countdownNumber = document.getElementById("countdown-number");
-const readyScreenEl = document.getElementById("ready-screen");
-
-// ── Game State ────────────────────────────────────────────────────────────────
-let gameStarted = false;
-
+// ── Ready screen / countdown ──────────────────────────────────────────────────
 function showReadyScreen() {
   if (gameStarted) return;
   overlay.classList.add("hidden");
@@ -179,17 +167,25 @@ function showReadyScreen() {
 
 function handleLetsGo() {
   readyScreenEl.classList.remove("show");
-  [enemyHitSound, playerHitSound].forEach((s) => {
-    s.play()
+
+  [enemyHitSound, playerHitSound].forEach((sound) => {
+    sound
+      .play()
       .then(() => {
-        s.pause();
-        s.currentTime = 0;
+        sound.pause();
+        sound.currentTime = 0;
       })
       .catch(() => {});
   });
-  if (musicPlaying) bgMusic.play().catch(() => {});
+
+  if (musicPlaying) {
+    bgMusic.play().catch(() => {});
+  }
+
   startCountdown();
 }
+
+window.handleLetsGo = handleLetsGo;
 
 function startCountdown() {
   if (gameStarted) return;
