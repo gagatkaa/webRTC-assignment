@@ -214,7 +214,7 @@ function startCountdown() {
 }
 
 // ── Audio ─────────────────────────────────────────────────────────────────────
-const bgMusic = new Audio("/music.mp3");
+const bgMusic = new Audio("sound/music.mp3");
 bgMusic.loop = true;
 bgMusic.volume = 0.4;
 bgMusic.addEventListener("error", (e) => {
@@ -223,8 +223,8 @@ bgMusic.addEventListener("error", (e) => {
 
 let musicPlaying = true;
 
-const enemyHitSound = new Audio("/enemyHitSound.wav");
-const playerHitSound = new Audio("/playerHitSound.wav");
+const enemyHitSound = new Audio("sound/enemyHitSound.wav");
+const playerHitSound = new Audio("sound/playerHitSound.wav");
 enemyHitSound.volume = 0.3;
 
 // ── Music button hit area ─────────────────────────────────────────────────────
