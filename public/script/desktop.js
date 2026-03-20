@@ -569,24 +569,26 @@ function drawGameOver(W, H) {
   ctx.fillRect(0, 0, W, H);
 
   ctx.fillStyle = COLOR_TEXT;
-  ctx.font = `bold 28px ${FONT}`;
+  ctx.font = `48px ${FONT}`;
   ctx.textAlign = "center";
   ctx.fillText("GAME OVER", W / 2, H / 2);
 
-  ctx.font = `12px ${FONT}`;
+  ctx.font = `24px ${FONT}`;
   ctx.fillText(`score: ${score}`, W / 2, H / 2 + 48);
 
   if (score >= bestScore && score > 0) {
     ctx.fillStyle = COLOR_BEST;
+    ctx.font = `18px ${FONT}`;
     ctx.fillText("NEW BEST!", W / 2, H / 2 + 76);
   } else {
     ctx.fillStyle = COLOR_TEXT_DIM;
+    ctx.font = `18px ${FONT}`;
     ctx.fillText(`best: ${bestScore}`, W / 2, H / 2 + 76);
   }
 
-  ctx.fillStyle = COLOR_TEXT;
-  ctx.font = `8px ${FONT}`;
-  ctx.fillText("Tap Restart on your phone", W / 2, H / 2 + 108);
+  ctx.fillStyle = COLOR_BARREL;
+  ctx.font = `18px ${FONT}`;
+  ctx.fillText("Tap Restart on your phone", W / 2, H / 2 + 120);
 }
 
 // ── Main loop ─────────────────────────────────────────────────────────────────
