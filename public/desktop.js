@@ -196,17 +196,20 @@ function startCountdown() {
   countdownNumber.textContent = count;
 
   const interval = setInterval(() => {
-    count--;
+    count -= 1;
     enemyHitSound.currentTime = 0;
     enemyHitSound.play().catch(() => {});
+
     if (count > 0) {
       countdownNumber.textContent = count;
-    } else {
+      return;
+    }
+
       clearInterval(interval);
       countdownEl.classList.remove("show");
       startTime = Date.now();
       gameStarted = true;
-    }
+    startSpawnCycle();
   }, 1000);
 }
 
