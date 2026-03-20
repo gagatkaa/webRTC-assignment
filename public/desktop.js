@@ -44,46 +44,46 @@ function destroyPeer() {
 
 function createPeerForOffer(fromSocketId) {
   destroyPeer();
-    controllerSocketId = fromSocketId;
+  controllerSocketId = fromSocketId;
 
   console.log("Creating desktop peer for controller:", controllerSocketId);
 
-    peer = new SimplePeer({
-      initiator: false,
-      trickle: true,
+  peer = new SimplePeer({
+    initiator: false,
+    trickle: true,
     config: getIceConfig(),
-    });
+  });
 
-    peer.on("signal", (data) => {
+  peer.on("signal", (data) => {
     console.log("Desktop sending signal:", data.type, data);
-      socket.emit("signal", controllerSocketId, data);
-    });
+    socket.emit("signal", controllerSocketId, data);
+  });
 
-    peer.on("connect", () => {
+  peer.on("connect", () => {
     console.log("Desktop peer connected");
-      phoneConnected = true;
+    phoneConnected = true;
     statusEl.textContent = "Phone connected!";
-      showReadyScreen();
-    });
+    showReadyScreen();
+  });
 
-    peer.on("data", (data) => {
+  peer.on("data", (data) => {
     const text = data.toString();
     console.log("Desktop received data:", text);
 
-      try {
+    try {
       handleDataChannelMessage(JSON.parse(text));
     } catch (err) {
       console.warn("Failed to parse data:", err);
-      }
-    });
+    }
+  });
 
-    peer.on("close", () => {
-      console.log("Peer connection closed");
-      peer = null;
+  peer.on("close", () => {
+    console.log("Peer connection closed");
+    peer = null;
     phoneConnected = false;
-    });
+  });
 
-    peer.on("error", (err) => {
+  peer.on("error", (err) => {
     console.error("Desktop peer error:", err);
   });
 
@@ -120,7 +120,7 @@ socket.on("signal", (_peerId, signalData, fromSocketId) => {
   }
 
   try {
-  peer.signal(signalData);
+    peer.signal(signalData);
   } catch (err) {
     console.error("peer.signal error:", err);
   }
@@ -205,10 +205,10 @@ function startCountdown() {
       return;
     }
 
-      clearInterval(interval);
-      countdownEl.classList.remove("show");
-      startTime = Date.now();
-      gameStarted = true;
+    clearInterval(interval);
+    countdownEl.classList.remove("show");
+    startTime = Date.now();
+    gameStarted = true;
     startSpawnCycle();
   }, 1000);
 }
@@ -490,7 +490,7 @@ function draw() {
       bullet.y > H + 80
     ) {
       bullets.splice(i, 1);
-  }
+    }
   }
 
   for (let i = enemies.length - 1; i >= 0; i -= 1) {
@@ -542,27 +542,45 @@ function draw() {
   }
 
   ctx.fillStyle = BULLET_COLOR;
-  for (const b of bullets)
-    ctx.fillRect(b.x - b.size / 2, b.y - b.size / 2, b.size, b.size);
+  for (const bullet of bullets) {
+    ctx.fillRect(
+      bullet.x - bullet.size / 2,
+      bullet.y - bullet.size / 2,
+      bullet.size,
+      bullet.size,
+    );
+  }
 
-  for (let i = particles.length - 1; i >= 0; i--) {
-    const p = particles[i];
-    p.x += p.vx;
-    p.y += p.vy;
-    p.life -= 0.03;
-    if (p.life <= 0) {
+  for (let i = particles.length - 1; i >= 0; i -= 1) {
+    const particle = particles[i];
+    particle.x += particle.vx;
+    particle.y += particle.vy;
+    particle.life -= 0.03;
+
+    if (particle.life <= 0) {
       particles.splice(i, 1);
       continue;
     }
-    ctx.globalAlpha = p.life;
-    ctx.fillStyle = p.color;
-    ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+
+    ctx.globalAlpha = particle.life;
+    ctx.fillStyle = particle.color;
+    ctx.fillRect(
+      particle.x - particle.size / 2,
+      particle.y - particle.size / 2,
+      particle.size,
+      particle.size,
+    );
   }
   ctx.globalAlpha = 1;
 
-  for (const e of enemies) {
-    ctx.fillStyle = e.color;
-    ctx.fillRect(e.x - e.size / 2, e.y - e.size / 2, e.size, e.size);
+  for (const enemy of enemies) {
+    ctx.fillStyle = enemy.color;
+    ctx.fillRect(
+      enemy.x - enemy.size / 2,
+      enemy.y - enemy.size / 2,
+      enemy.size,
+      enemy.size,
+    );
   }
 
   ctx.fillStyle = "#4a9";
@@ -591,6 +609,7 @@ function draw() {
 
   ctx.font = "15px system-ui";
   ctx.textAlign = "left";
+  ctx.fillStyle = "white";
   ctx.fillText(`enemies: ${enemies.length}`, 20, 38);
 
   ctx.textAlign = "right";
@@ -599,16 +618,15 @@ function draw() {
     "❤️".repeat(Math.max(0, lives)) + "🖤".repeat(Math.max(0, 5 - lives));
   ctx.fillText(heartsDisplay, W - 20, 38);
 
-  // WebRTC indicator
   ctx.textAlign = "left";
   ctx.font = "12px system-ui";
   ctx.fillStyle = peer?.connected ? "#2d7" : "#f80";
   ctx.fillText(peer?.connected ? "● WebRTC" : "● Waiting...", 20, 58);
 
-  // Music toggle
-  const bx = musicBtn.x,
-    by = musicBtn.y,
-    bs = musicBtn.w;
+  const bx = musicBtn.x;
+  const by = musicBtn.y;
+  const bs = musicBtn.w;
+
   ctx.fillStyle = "rgba(255,255,255,0.08)";
   ctx.strokeStyle = "#555";
   ctx.lineWidth = 1;
@@ -616,17 +634,19 @@ function draw() {
   ctx.roundRect(bx, by, bs, bs, 3);
   ctx.fill();
   ctx.stroke();
-  const cx2 = bx + bs / 2,
-    cy2 = by + bs / 2;
+
+  const iconX = bx + bs / 2;
+  const iconY = by + bs / 2;
   ctx.fillStyle = "#ccc";
+
   if (musicPlaying) {
-    ctx.fillRect(cx2 - 4, cy2 - 4, 3, 8);
-    ctx.fillRect(cx2 + 1, cy2 - 4, 3, 8);
+    ctx.fillRect(iconX - 4, iconY - 4, 3, 8);
+    ctx.fillRect(iconX + 1, iconY - 4, 3, 8);
   } else {
     ctx.beginPath();
-    ctx.moveTo(cx2 - 3, cy2 - 5);
-    ctx.lineTo(cx2 + 5, cy2);
-    ctx.lineTo(cx2 - 3, cy2 + 5);
+    ctx.moveTo(iconX - 3, iconY - 5);
+    ctx.lineTo(iconX + 5, iconY);
+    ctx.lineTo(iconX - 3, iconY + 5);
     ctx.closePath();
     ctx.fill();
   }
@@ -636,12 +656,15 @@ function draw() {
   if (gameOver) {
     ctx.fillStyle = "rgba(0,0,0,0.6)";
     ctx.fillRect(0, 0, W, H);
+
     ctx.fillStyle = "white";
     ctx.font = "bold 48px system-ui";
     ctx.textAlign = "center";
     ctx.fillText("GAME OVER", W / 2, H / 2);
+
     ctx.font = "18px system-ui";
     ctx.fillText(`score: ${score}`, W / 2, H / 2 + 36);
+
     if (score >= bestScore && score > 0) {
       ctx.fillStyle = "#ffd400";
       ctx.fillText("NEW BEST!", W / 2, H / 2 + 60);
@@ -649,14 +672,12 @@ function draw() {
       ctx.fillStyle = "#aaa";
       ctx.fillText(`best: ${bestScore}`, W / 2, H / 2 + 60);
     }
+
     ctx.fillStyle = "white";
     ctx.fillText("Tap Restart on your phone", W / 2, H / 2 + 90);
-    return;
   }
 
   requestAnimationFrame(draw);
 }
 
-// ── Start ────────────────────────────────────────────────────────────────────
-startSpawnCycle();
 draw();
