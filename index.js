@@ -12,8 +12,8 @@ const app = express();
 const port = process.env.PORT || 3000;
 
 const options = {
-  key: fs.readFileSync("./localhost.key"),
-  cert: fs.readFileSync("./localhost.crt"),
+  key: fs.readFileSync("certs/localhost.key"),
+  cert: fs.readFileSync("certs/localhost.crt"),
 };
 
 const server = https.createServer(options, app);
