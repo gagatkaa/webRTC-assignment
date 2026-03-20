@@ -40,16 +40,40 @@ socket.on("disconnect", (reason) => {
 // ── WebRTC ────────────────────────────────────────────────────────────────────
 let peer = null;
 
-function startWebRTC() {
-  log("Starting simple-peer...");
+function destroyPeer() {
+  if (!peer) return;
 
-  if (peer) peer.destroy();
+  try {
+    peer.destroy();
+  } catch (err) {
+    log(`Destroy peer error: ${err.message}`);
+  }
+
+  peer = null;
+}
+
+function createPeer() {
+  if (!targetId) return;
+
+  destroyPeer();
+  log("Creating peer...");
 
   peer = new SimplePeer({
     initiator: true,
     trickle: true,
     config: {
-      iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+      iceServers: [
+        { urls: "stun:stun.l.google.com:19302" },
+        {
+          urls: [
+            "turn:openrelay.metered.ca:80",
+            "turn:openrelay.metered.ca:443",
+            "turn:openrelay.metered.ca:443?transport=tcp",
+          ],
+          username: "openrelayproject",
+          credential: "openrelayproject",
+        },
+      ],
     },
   });
 
@@ -64,7 +88,8 @@ function startWebRTC() {
   });
 
   peer.on("data", (data) => {
-    log("Received: " + data);
+    const text = data.toString();
+    log(`Received: ${text}`);
   });
 
   peer.on("close", () => {
@@ -73,20 +98,44 @@ function startWebRTC() {
   });
 
   peer.on("error", (err) => {
-    log("Peer error: " + err.code);
+    console.error("Phone peer error:", err);
+    log(`Peer error: ${err.message || err.code || "unknown"}`);
   });
+
+  const pc = peer._pc;
+  if (pc) {
+    pc.addEventListener("iceconnectionstatechange", () => {
+      log(`ICE state: ${pc.iceConnectionState}`);
+    });
+
+    pc.addEventListener("connectionstatechange", () => {
+      log(`PC state: ${pc.connectionState}`);
+    });
+
+    pc.addEventListener("icegatheringstatechange", () => {
+      log(`ICE gathering: ${pc.iceGatheringState}`);
+    });
+  }
 }
 
-// Receive answer signal from desktop
-socket.on("signal", (myId, signalData, fromSocketId) => {
-  if (peer) {
+socket.on("signal", (_myId, signalData, fromSocketId) => {
+  log(`Phone received signal: ${signalData.type} from ${fromSocketId}`);
+
+  if (!peer) {
+    log("Received signal but peer does not exist yet.");
+    return;
+  }
+
+  try {
     peer.signal(signalData);
   }
 });
 
-// ── Send data (WebRTC only) ───────────────────────────────────────────────────
+// ── Data sending ──────────────────────────────────────────────────────────────
 function sendData(type, payload) {
-  if (peer?.connected) {
+  if (!peer?.connected) return;
+
+  try {
     peer.send(JSON.stringify({ type, data: payload }));
   } else {
     log("WebRTC not ready, dropping: " + type);
@@ -94,7 +143,6 @@ function sendData(type, payload) {
 }
 
 function sendMove(gx, gy) {
-  if (!targetId) return;
   sendData("update", { gx, gy });
 }
 
@@ -113,17 +161,24 @@ function setAim(x, y) {
 
 function maybeStartAutoFire() {
   if (shootTimer) return;
+
   shootTimer = setInterval(() => {
-    if (!targetId) return;
     const mag = Math.hypot(aimX, aimY);
     if (mag < MIN_AIM_MAG) return;
-    sendData("shoot", { dirX: aimX / mag, dirY: aimY / mag, t: Date.now() });
+
+    sendData("shoot", {
+      dirX: aimX / mag,
+      dirY: aimY / mag,
+      t: Date.now(),
+    });
   }, SHOOT_EVERY_MS);
-  log("Auto-fire every " + SHOOT_EVERY_MS + "ms");
+
+  log(`Auto-fire every ${SHOOT_EVERY_MS}ms`);
 }
 
 function stopAutoFire() {
   if (!shootTimer) return;
+
   clearInterval(shootTimer);
   shootTimer = null;
   log("Auto-fire stopped");
