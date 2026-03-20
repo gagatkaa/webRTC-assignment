@@ -2,8 +2,6 @@ const statusEl = document.getElementById("status");
 const enableBtn = document.getElementById("enable");
 const restartBtn = document.getElementById("restart");
 const debugEl = document.getElementById("debug");
-const joystickEl = document.getElementById("joystick");
-const knobEl = document.getElementById("knob");
 
 function log(msg) {
   console.log(msg);
@@ -191,63 +189,13 @@ function startMotion() {
     sendMove(gx, gy);
     setAim(gx, gy);
   });
-
-  setTimeout(() => {
-    if (count === 0) {
-      log("No gyro events after 2s — showing joystick.");
-      showJoystick();
-    }
-  }, 2000);
 }
 
-function showJoystick() {
-  joystickEl.style.display = "flex";
-  statusEl.textContent = "Drag the circle to control the tank.";
-  maybeStartAutoFire();
-}
+enableBtn.addEventListener("click", enableMotion);
 
-// ── Joystick touch ────────────────────────────────────────────────────────────
-const RADIUS = 60;
-let originX = 0,
-  originY = 0;
-
-joystickEl.addEventListener(
-  "touchstart",
-  (e) => {
-    e.preventDefault();
-    const rect = joystickEl.getBoundingClientRect();
-    originX = rect.left + rect.width / 2;
-    originY = rect.top + rect.height / 2;
-  },
-  { passive: false },
-);
-
-joystickEl.addEventListener(
-  "touchmove",
-  (e) => {
-    e.preventDefault();
-    let dx = e.touches[0].clientX - originX;
-    let dy = e.touches[0].clientY - originY;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    if (dist > RADIUS) {
-      dx = (dx / dist) * RADIUS;
-      dy = (dy / dist) * RADIUS;
-    }
-    knobEl.style.transform = "translate(" + dx + "px, " + dy + "px)";
-
-    const gx = dx / RADIUS;
-    const gy = dy / RADIUS;
-
-    sendMove(gx, gy);
-    setAim(gx, gy);
-  },
-  { passive: false },
-);
-
-joystickEl.addEventListener("touchend", () => {
-  knobEl.style.transform = "translate(0,0)";
-  sendMove(0, 0);
-  setAim(0, 0);
+restartBtn.addEventListener("click", () => {
+  log("Restart requested");
+  sendData("restart", {});
 });
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
