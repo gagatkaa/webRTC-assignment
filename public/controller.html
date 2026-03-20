@@ -5,70 +5,12 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Controller</title>
+    <link rel="stylesheet" href="style/controller.css">
+
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/nosleep/0.12.0/NoSleep.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/simple-peer/9.11.1/simplepeer.min.js"></script>
 
-    <style>
-        body {
-            margin: 0;
-            min-height: 100vh;
-            display: grid;
-            place-items: center;
-            font-family: system-ui, sans-serif;
-            background: #111;
-            color: white;
-            text-align: center;
-        }
-
-        .controller {
-            width: min(92vw, 420px);
-            padding: 24px;
-        }
-
-        #status {
-            font-size: 14px;
-            color: #aaa;
-            margin-bottom: 16px;
-            line-height: 1.5;
-        }
-
-        button {
-            font-size: 18px;
-            padding: 12px 16px;
-            border: 0;
-            border-radius: 10px;
-            cursor: pointer;
-        }
-
-        #enable {
-            background: #4a9;
-            color: #111;
-        }
-
-        #restart {
-            background: #f80;
-            color: white;
-            display: none;
-            margin-left: 8px;
-        }
-
-        #debug {
-            position: fixed;
-            left: 12px;
-            right: 12px;
-            bottom: 12px;
-            max-height: 32vh;
-            overflow: auto;
-            font-size: 12px;
-            text-align: left;
-            padding: 10px;
-            border-radius: 10px;
-            background: rgba(0, 0, 0, 0.55);
-            color: #d7d7d7;
-            box-sizing: border-box;
-        }
-    </style>
 </head>
 
 <body>
@@ -81,7 +23,7 @@
     <div id="debug"></div>
 
     <script src="/socket.io/socket.io.js"></script>
-    <script src="./controller.js"></script>
+    <script src="script/controller.js"></script>
 </body>
 
 </html>
