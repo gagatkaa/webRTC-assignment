@@ -263,7 +263,6 @@ socket.on("connect", () => {
   qr.make();
 
   qrEl.innerHTML = qr.createImgTag(4, 8);
-  console.log("Desktop socket connected:", socket.id);
 });
 
 // ── Resize ────────────────────────────────────────────────────────────────────
