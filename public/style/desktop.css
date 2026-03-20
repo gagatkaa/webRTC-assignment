@@ -4,6 +4,7 @@ body {
   margin: 0;
   overflow: hidden;
   background: #111;
+  font-family: "Press Start 2P", monospace;
 }
 
 #tank {
@@ -24,13 +25,35 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  font-family: system-ui;
 }
 
 #overlay.hidden {
   display: none;
 }
+#tagline {
+  font-family: "Press Start 2P", monospace;
+  font-size: 1.5rem;
+  color: #aaa;
+  text-align: center;
+  line-height: 2;
+  margin-bottom: 4rem;
+}
 
+#tips {
+  font-family: "Press Start 2P", monospace;
+  font-size: 1rem;
+  color: #2d7;
+  text-align: center;
+  line-height: 2.5;
+  margin-bottom: 4rem;
+}
+
+#tips p {
+  margin: 0;
+}
+#instructions-title {
+  color: white;
+}
 #url {
   color: #7df;
   word-break: break-all;
@@ -51,7 +74,6 @@ body {
 }
 
 #logo {
-  font-family: "Press Start 2P", monospace;
   font-size: 6rem;
   color: #4a9;
   text-shadow: 4px 4px 0 #2d7;
@@ -82,8 +104,7 @@ body {
 }
 
 #ready-title {
-  font-family: "Press Start 2P", monospace;
-  font-size: 3.5rem;
+  font-size: 5rem;
   color: white;
   text-shadow: 3px 3px 0 #2d7;
   margin-bottom: 48px;
@@ -103,7 +124,6 @@ body {
 }
 
 #lets-go-btn {
-  font-family: "Press Start 2P", monospace;
   font-size: 1.6rem;
   color: #111;
   background: #4a9;
@@ -116,6 +136,8 @@ body {
   transition:
     transform 0.08s,
     box-shadow 0.08s;
+
+  font-family: "Press Start 2P", monospace;
 }
 
 #lets-go-btn:hover {
@@ -137,7 +159,6 @@ body {
   justify-content: center;
   background: rgba(0, 0, 0, 0.7);
   color: white;
-  font-family: system-ui;
 }
 
 #countdown.show {

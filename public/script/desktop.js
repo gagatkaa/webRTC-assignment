@@ -11,6 +11,44 @@ const countdownEl = document.getElementById("countdown");
 const countdownNumber = document.getElementById("countdown-number");
 const readyScreenEl = document.getElementById("ready-screen");
 
+// ── Theme ─────────────────────────────────────────────────────────────────────
+const FONT = '"Press Start 2P", monospace';
+
+const COLOR_GRID = "#222";
+const COLOR_TANK = "#4a9";
+const COLOR_BARREL = "#2d7";
+const COLOR_BULLET = "#00ffaa";
+
+const COLOR_HUD_BG = "rgba(0,0,0,0.45)";
+const COLOR_TEXT = "white";
+const COLOR_TEXT_DIM = "#aaa";
+const COLOR_CONNECTED = "#2d7";
+const COLOR_WAITING = "#f80";
+
+const COLOR_GAMEOVER_BG = "rgba(0,0,0,0.6)";
+const COLOR_BEST = "#ffd400";
+
+const COLOR_MUSIC_BTN_BG = "rgba(255,255,255,0.08)";
+const COLOR_MUSIC_BTN_BORDER = "#555";
+const COLOR_MUSIC_ICON = "#ccc";
+
+const ENEMY_COLORS = ["#ff2d2d", "#ff7a00", "#ffd400"];
+
+const COLOR_HEART = "#ff2d2d";
+const COLOR_HEART_EMPTY = "#333";
+
+// ── Game constants ────────────────────────────────────────────────────────────
+const BULLET_SIZE = 10;
+const BULLET_SPEED = 14;
+const MUZZLE_LEN = 36;
+const TANK_SIZE = 48;
+const SPAWN_MARGIN = 60;
+
+const ENEMY_SPEED_MIN = 0.6;
+const ENEMY_SPEED_MAX = 1.2;
+const ENEMY_SIZE_MIN = 18;
+const ENEMY_SIZE_MAX = 34;
+
 // ── WebRTC ────────────────────────────────────────────────────────────────────
 let peer = null;
 let controllerSocketId = null;
@@ -45,7 +83,6 @@ function destroyPeer() {
 function createPeerForOffer(fromSocketId) {
   destroyPeer();
   controllerSocketId = fromSocketId;
-
   console.log("Creating desktop peer for controller:", controllerSocketId);
 
   peer = new SimplePeer({
@@ -69,7 +106,6 @@ function createPeerForOffer(fromSocketId) {
   peer.on("data", (data) => {
     const text = data.toString();
     console.log("Desktop received data:", text);
-
     try {
       handleDataChannelMessage(JSON.parse(text));
     } catch (err) {
@@ -92,11 +128,9 @@ function createPeerForOffer(fromSocketId) {
     pc.addEventListener("iceconnectionstatechange", () => {
       console.log("Desktop ICE state:", pc.iceConnectionState);
     });
-
     pc.addEventListener("connectionstatechange", () => {
       console.log("Desktop PC state:", pc.connectionState);
     });
-
     pc.addEventListener("icegatheringstatechange", () => {
       console.log("Desktop ICE gathering:", pc.iceGatheringState);
     });
@@ -145,19 +179,6 @@ const enemies = [];
 const particles = [];
 let spawnTimeoutId = null;
 
-// ── Constants ─────────────────────────────────────────────────────────────────
-const BULLET_SIZE = 10;
-const BULLET_SPEED = 14;
-const MUZZLE_LEN = 36;
-
-const BULLET_COLOR = "#00ffaa";
-const ENEMY_COLORS = ["#ff2d2d", "#ff7a00", "#ffd400"];
-const ENEMY_SPEED_MIN = 0.6;
-const ENEMY_SPEED_MAX = 1.2;
-const ENEMY_SIZE_MIN = 18;
-const ENEMY_SIZE_MAX = 34;
-const SPAWN_MARGIN = 60;
-
 // ── Ready screen / countdown ──────────────────────────────────────────────────
 function showReadyScreen() {
   if (gameStarted) return;
@@ -178,9 +199,7 @@ function handleLetsGo() {
       .catch(() => {});
   });
 
-  if (musicPlaying) {
-    bgMusic.play().catch(() => {});
-  }
+  if (musicPlaying) bgMusic.play().catch(() => {});
 
   startCountdown();
 }
@@ -191,7 +210,6 @@ function startCountdown() {
   if (gameStarted) return;
 
   countdownEl.classList.add("show");
-
   let count = 3;
   countdownNumber.textContent = count;
 
@@ -242,11 +260,8 @@ canvas.addEventListener("click", (e) => {
     my <= musicBtn.y + musicBtn.h
   ) {
     musicPlaying = !musicPlaying;
-
     if (musicPlaying) {
-      if (gameStarted && !gameOver) {
-        bgMusic.play().catch(() => {});
-      }
+      if (gameStarted && !gameOver) bgMusic.play().catch(() => {});
     } else {
       bgMusic.pause();
     }
@@ -261,7 +276,6 @@ socket.on("connect", () => {
   const qr = qrcode(0, "M");
   qr.addData(controllerURL);
   qr.make();
-
   qrEl.innerHTML = qr.createImgTag(4, 8);
 });
 
@@ -276,18 +290,13 @@ resize();
 
 // ── Data channel messages ─────────────────────────────────────────────────────
 function handleDataChannelMessage(msg) {
-  if (msg.type === "update") {
-    handleUpdate(msg.data);
-  } else if (msg.type === "shoot") {
-    handleShoot(msg.data);
-  } else if (msg.type === "restart") {
-    restartGame();
-  }
+  if (msg.type === "update") handleUpdate(msg.data);
+  else if (msg.type === "shoot") handleShoot(msg.data);
+  else if (msg.type === "restart") restartGame();
 }
 
 function handleUpdate(data) {
-  if (gameOver) return;
-  if (!gameStarted) return;
+  if (gameOver || !gameStarted) return;
 
   phoneConnected = true;
 
@@ -298,10 +307,8 @@ function handleUpdate(data) {
 
   const mag = Math.hypot(tankX, tankY);
   if (mag > 0.05) {
-    const targetAimX = tankX / mag;
-    const targetAimY = tankY / mag;
-    aimX += (targetAimX - aimX) * 0.15;
-    aimY += (targetAimY - aimY) * 0.15;
+    aimX += (tankX / mag - aimX) * 0.15;
+    aimY += (tankY / mag - aimY) * 0.15;
   }
 }
 
@@ -352,9 +359,7 @@ function restartGame() {
     spawnTimeoutId = null;
   }
 
-  if (musicPlaying) {
-    bgMusic.play().catch(() => {});
-  }
+  if (musicPlaying) bgMusic.play().catch(() => {});
 
   startCountdown();
 }
@@ -370,11 +375,9 @@ function pick(arr) {
 
 function spawnParticles(x, y, color, size) {
   const count = 8 + Math.random() * 4;
-
   for (let i = 0; i < count; i += 1) {
     const angle = Math.random() * Math.PI * 2;
     const speed = 2 + Math.random() * 4;
-
     particles.push({
       x,
       y,
@@ -392,8 +395,7 @@ function spawnEnemy() {
   const H = canvas.height;
   const side = (Math.random() * 4) | 0;
 
-  let x;
-  let y;
+  let x, y;
 
   if (side === 0) {
     x = -SPAWN_MARGIN;
@@ -410,8 +412,7 @@ function spawnEnemy() {
   }
 
   const elapsed = gameStarted ? (Date.now() - startTime) / 1000 : 0;
-  const difficulty = Math.min(elapsed / 60, 1);
-  const speedBoost = difficulty * 3;
+  const speedBoost = Math.min(elapsed / 60, 1) * 3;
 
   enemies.push({
     x,
@@ -424,8 +425,7 @@ function spawnEnemy() {
 
 function getSpawnInterval() {
   const elapsed = gameStarted ? (Date.now() - startTime) / 1000 : 0;
-  const difficulty = Math.min(elapsed / 90, 1);
-  return 2000 - difficulty * 1500;
+  return 2000 - Math.min(elapsed / 90, 1) * 1500;
 }
 
 function startSpawnCycle() {
@@ -433,12 +433,8 @@ function startSpawnCycle() {
 
   function scheduleSpawn() {
     spawnTimeoutId = setTimeout(() => {
-      if (!gameOver && gameStarted) {
-        spawnEnemy();
-      }
-      if (!gameOver) {
-        scheduleSpawn();
-      }
+      if (!gameOver && gameStarted) spawnEnemy();
+      if (!gameOver) scheduleSpawn();
     }, getSpawnInterval());
   }
 
@@ -449,185 +445,102 @@ function hit(ax, ay, as, bx, by, bs) {
   return Math.abs(ax - bx) * 2 < as + bs && Math.abs(ay - by) * 2 < as + bs;
 }
 
-// ── Main loop ─────────────────────────────────────────────────────────────────
-function draw() {
-  const W = canvas.width;
-  const H = canvas.height;
+function drawPixelHeart(ctx, x, y, size, color) {
+  const p = size / 8;
+  const grid = [
+    [0, 1, 1, 0, 0, 1, 1, 0],
+    [1, 1, 1, 1, 1, 1, 1, 1],
+    [1, 1, 1, 1, 1, 1, 1, 1],
+    [0, 1, 1, 1, 1, 1, 1, 0],
+    [0, 0, 1, 1, 1, 1, 0, 0],
+    [0, 0, 0, 1, 1, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0],
+  ];
+  ctx.fillStyle = color;
+  for (let row = 0; row < grid.length; row++) {
+    for (let col = 0; col < grid[row].length; col++) {
+      if (grid[row][col]) {
+        ctx.fillRect(x + col * p, y + row * p, p, p);
+      }
+    }
+  }
+}
 
-  ctx.clearRect(0, 0, W, H);
-
-  ctx.strokeStyle = "#222";
+// ── Draw helpers ──────────────────────────────────────────────────────────────
+function drawGrid(W, H) {
+  ctx.strokeStyle = COLOR_GRID;
   ctx.lineWidth = 1;
-
   for (let x = 0; x < W; x += 40) {
     ctx.beginPath();
     ctx.moveTo(x, 0);
     ctx.lineTo(x, H);
     ctx.stroke();
   }
-
   for (let y = 0; y < H; y += 40) {
     ctx.beginPath();
     ctx.moveTo(0, y);
     ctx.lineTo(W, y);
     ctx.stroke();
   }
+}
 
-  const cx = W / 2 + tankX * (W / 2 - 40);
-  const cy = H / 2 + tankY * (H / 2 - 40);
-  const tankSize = 48;
+function drawTank(cx, cy) {
+  ctx.fillStyle = COLOR_TANK;
+  ctx.fillRect(cx - TANK_SIZE / 2, cy - TANK_SIZE / 2, TANK_SIZE, TANK_SIZE);
 
-  for (let i = bullets.length - 1; i >= 0; i -= 1) {
-    const bullet = bullets[i];
-    bullet.x += bullet.vx;
-    bullet.y += bullet.vy;
-
-    if (
-      bullet.x < -80 ||
-      bullet.x > W + 80 ||
-      bullet.y < -80 ||
-      bullet.y > H + 80
-    ) {
-      bullets.splice(i, 1);
-    }
-  }
-
-  for (let i = enemies.length - 1; i >= 0; i -= 1) {
-    const enemy = enemies[i];
-    const dx = cx - enemy.x;
-    const dy = cy - enemy.y;
-    const mag = Math.hypot(dx, dy) || 1;
-
-    enemy.x += (dx / mag) * enemy.speed;
-    enemy.y += (dy / mag) * enemy.speed;
-
-    if (hit(enemy.x, enemy.y, enemy.size, cx, cy, tankSize)) {
-      enemies.splice(i, 1);
-      lives -= 1;
-
-      playerHitSound.currentTime = 0;
-      playerHitSound.play().catch(() => {});
-
-      if (lives <= 0) {
-        gameOver = true;
-      }
-    }
-  }
-
-  for (let ei = enemies.length - 1; ei >= 0; ei -= 1) {
-    const enemy = enemies[ei];
-
-    for (let bi = bullets.length - 1; bi >= 0; bi -= 1) {
-      const bullet = bullets[bi];
-
-      if (hit(enemy.x, enemy.y, enemy.size, bullet.x, bullet.y, bullet.size)) {
-        spawnParticles(enemy.x, enemy.y, enemy.color, enemy.size);
-
-        enemyHitSound.currentTime = 0;
-        enemyHitSound.play().catch(() => {});
-
-        enemies.splice(ei, 1);
-        bullets.splice(bi, 1);
-        score += 1;
-
-        if (score > bestScore) {
-          bestScore = score;
-          localStorage.setItem("tiltSmashBest", String(bestScore));
-        }
-
-        break;
-      }
-    }
-  }
-
-  ctx.fillStyle = BULLET_COLOR;
-  for (const bullet of bullets) {
-    ctx.fillRect(
-      bullet.x - bullet.size / 2,
-      bullet.y - bullet.size / 2,
-      bullet.size,
-      bullet.size,
-    );
-  }
-
-  for (let i = particles.length - 1; i >= 0; i -= 1) {
-    const particle = particles[i];
-    particle.x += particle.vx;
-    particle.y += particle.vy;
-    particle.life -= 0.03;
-
-    if (particle.life <= 0) {
-      particles.splice(i, 1);
-      continue;
-    }
-
-    ctx.globalAlpha = particle.life;
-    ctx.fillStyle = particle.color;
-    ctx.fillRect(
-      particle.x - particle.size / 2,
-      particle.y - particle.size / 2,
-      particle.size,
-      particle.size,
-    );
-  }
-  ctx.globalAlpha = 1;
-
-  for (const enemy of enemies) {
-    ctx.fillStyle = enemy.color;
-    ctx.fillRect(
-      enemy.x - enemy.size / 2,
-      enemy.y - enemy.size / 2,
-      enemy.size,
-      enemy.size,
-    );
-  }
-
-  ctx.fillStyle = "#4a9";
-  ctx.fillRect(cx - tankSize / 2, cy - tankSize / 2, tankSize, tankSize);
-
-  ctx.strokeStyle = "#2d7";
+  ctx.strokeStyle = COLOR_BARREL;
   ctx.lineWidth = 8;
   ctx.beginPath();
   ctx.moveTo(cx, cy);
   ctx.lineTo(cx + aimX * MUZZLE_LEN, cy + aimY * MUZZLE_LEN);
   ctx.stroke();
+}
 
-  ctx.fillStyle = "rgba(0,0,0,0.45)";
+function drawHUD(W) {
+  ctx.fillStyle = COLOR_HUD_BG;
   ctx.fillRect(0, 0, W, 64);
 
-  ctx.fillStyle = "white";
-  ctx.font = "bold 22px system-ui";
+  ctx.fillStyle = COLOR_TEXT;
+  ctx.font = `bold 24px ${FONT}`;
   ctx.textAlign = "center";
-  ctx.fillText(`SCORE: ${score}`, W / 2, 38);
+  ctx.fillText(`SCORE: ${score}`, W / 2, 36);
 
   if (bestScore > 0) {
-    ctx.font = "12px system-ui";
-    ctx.fillStyle = "#aaa";
-    ctx.fillText(`BEST: ${bestScore}`, W / 2, 56);
+    ctx.font = `12px ${FONT}`;
+    ctx.fillStyle = COLOR_TEXT_DIM;
+    ctx.fillText(`BEST: ${bestScore}`, W / 2, 54);
   }
 
-  ctx.font = "15px system-ui";
+  const heartSize = 25;
+  const totalHearts = 5;
+  const startX = W - 20 - totalHearts * (heartSize + 4);
+
+  for (let i = 0; i < totalHearts; i++) {
+    const hx = startX + i * (heartSize + 6);
+    const color = i < lives ? COLOR_HEART : COLOR_HEART_EMPTY;
+    drawPixelHeart(ctx, hx, 22, heartSize, color);
+  }
+
+  const connected = peer?.connected;
+  const dotColor = connected ? COLOR_CONNECTED : COLOR_WAITING;
+  const label = connected ? "WebRTC" : "Waiting...";
+
+  ctx.fillStyle = dotColor;
+  ctx.beginPath();
+  ctx.arc(22, 36, 5, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = dotColor;
   ctx.textAlign = "left";
-  ctx.fillStyle = "white";
-  ctx.fillText(`enemies: ${enemies.length}`, 20, 38);
+  ctx.font = `10px ${FONT}`;
+  ctx.fillText(label, 36, 42);
+}
 
-  ctx.textAlign = "right";
-  ctx.font = "22px system-ui";
-  const heartsDisplay =
-    "❤️".repeat(Math.max(0, lives)) + "🖤".repeat(Math.max(0, 5 - lives));
-  ctx.fillText(heartsDisplay, W - 20, 38);
+function drawMusicBtn() {
+  const { x: bx, y: by, w: bs } = musicBtn;
 
-  ctx.textAlign = "left";
-  ctx.font = "12px system-ui";
-  ctx.fillStyle = peer?.connected ? "#2d7" : "#f80";
-  ctx.fillText(peer?.connected ? "● WebRTC" : "● Waiting...", 20, 58);
-
-  const bx = musicBtn.x;
-  const by = musicBtn.y;
-  const bs = musicBtn.w;
-
-  ctx.fillStyle = "rgba(255,255,255,0.08)";
-  ctx.strokeStyle = "#555";
+  ctx.fillStyle = COLOR_MUSIC_BTN_BG;
+  ctx.strokeStyle = COLOR_MUSIC_BTN_BORDER;
   ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.roundRect(bx, by, bs, bs, 3);
@@ -636,7 +549,7 @@ function draw() {
 
   const iconX = bx + bs / 2;
   const iconY = by + bs / 2;
-  ctx.fillStyle = "#ccc";
+  ctx.fillStyle = COLOR_MUSIC_ICON;
 
   if (musicPlaying) {
     ctx.fillRect(iconX - 4, iconY - 4, 3, 8);
@@ -649,32 +562,144 @@ function draw() {
     ctx.closePath();
     ctx.fill();
   }
+}
 
-  ctx.textAlign = "left";
+function drawGameOver(W, H) {
+  ctx.fillStyle = COLOR_GAMEOVER_BG;
+  ctx.fillRect(0, 0, W, H);
 
-  if (gameOver) {
-    ctx.fillStyle = "rgba(0,0,0,0.6)";
-    ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = COLOR_TEXT;
+  ctx.font = `48px ${FONT}`;
+  ctx.textAlign = "center";
+  ctx.fillText("GAME OVER", W / 2, H / 2);
 
-    ctx.fillStyle = "white";
-    ctx.font = "bold 48px system-ui";
-    ctx.textAlign = "center";
-    ctx.fillText("GAME OVER", W / 2, H / 2);
+  ctx.font = `24px ${FONT}`;
+  ctx.fillText(`score: ${score}`, W / 2, H / 2 + 48);
 
-    ctx.font = "18px system-ui";
-    ctx.fillText(`score: ${score}`, W / 2, H / 2 + 36);
-
-    if (score >= bestScore && score > 0) {
-      ctx.fillStyle = "#ffd400";
-      ctx.fillText("NEW BEST!", W / 2, H / 2 + 60);
-    } else {
-      ctx.fillStyle = "#aaa";
-      ctx.fillText(`best: ${bestScore}`, W / 2, H / 2 + 60);
-    }
-
-    ctx.fillStyle = "white";
-    ctx.fillText("Tap Restart on your phone", W / 2, H / 2 + 90);
+  if (score >= bestScore && score > 0) {
+    ctx.fillStyle = COLOR_BEST;
+    ctx.font = `18px ${FONT}`;
+    ctx.fillText("NEW BEST!", W / 2, H / 2 + 76);
+  } else {
+    ctx.fillStyle = COLOR_TEXT_DIM;
+    ctx.font = `18px ${FONT}`;
+    ctx.fillText(`best: ${bestScore}`, W / 2, H / 2 + 76);
   }
+
+  ctx.fillStyle = COLOR_BARREL;
+  ctx.font = `18px ${FONT}`;
+  ctx.fillText("Tap Restart on your phone", W / 2, H / 2 + 120);
+}
+
+// ── Main loop ─────────────────────────────────────────────────────────────────
+function draw() {
+  const W = canvas.width;
+  const H = canvas.height;
+
+  ctx.clearRect(0, 0, W, H);
+  drawGrid(W, H);
+
+  const cx = W / 2 + tankX * (W / 2 - 40);
+  const cy = H / 2 + tankY * (H / 2 - 40);
+
+  // Move bullets
+  for (let i = bullets.length - 1; i >= 0; i -= 1) {
+    const bullet = bullets[i];
+    bullet.x += bullet.vx;
+    bullet.y += bullet.vy;
+    if (
+      bullet.x < -80 ||
+      bullet.x > W + 80 ||
+      bullet.y < -80 ||
+      bullet.y > H + 80
+    ) {
+      bullets.splice(i, 1);
+    }
+  }
+
+  // Move enemies + check tank collision
+  for (let i = enemies.length - 1; i >= 0; i -= 1) {
+    const enemy = enemies[i];
+    const dx = cx - enemy.x;
+    const dy = cy - enemy.y;
+    const mag = Math.hypot(dx, dy) || 1;
+
+    enemy.x += (dx / mag) * enemy.speed;
+    enemy.y += (dy / mag) * enemy.speed;
+
+    if (hit(enemy.x, enemy.y, enemy.size, cx, cy, TANK_SIZE)) {
+      enemies.splice(i, 1);
+      lives -= 1;
+      playerHitSound.currentTime = 0;
+      playerHitSound.play().catch(() => {});
+      if (lives <= 0) gameOver = true;
+    }
+  }
+
+  // Bullet vs enemy collision
+  for (let ei = enemies.length - 1; ei >= 0; ei -= 1) {
+    const enemy = enemies[ei];
+    for (let bi = bullets.length - 1; bi >= 0; bi -= 1) {
+      const bullet = bullets[bi];
+      if (hit(enemy.x, enemy.y, enemy.size, bullet.x, bullet.y, bullet.size)) {
+        spawnParticles(enemy.x, enemy.y, enemy.color, enemy.size);
+        enemyHitSound.currentTime = 0;
+        enemyHitSound.play().catch(() => {});
+        enemies.splice(ei, 1);
+        bullets.splice(bi, 1);
+        score += 1;
+        if (score > bestScore) {
+          bestScore = score;
+          localStorage.setItem("tiltSmashBest", String(bestScore));
+        }
+        break;
+      }
+    }
+  }
+
+  // Draw bullets
+  ctx.fillStyle = COLOR_BULLET;
+  for (const bullet of bullets) {
+    ctx.fillRect(
+      bullet.x - bullet.size / 2,
+      bullet.y - bullet.size / 2,
+      bullet.size,
+      bullet.size,
+    );
+  }
+
+  // Draw particles
+  for (let i = particles.length - 1; i >= 0; i -= 1) {
+    const p = particles[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    p.life -= 0.03;
+    if (p.life <= 0) {
+      particles.splice(i, 1);
+      continue;
+    }
+    ctx.globalAlpha = p.life;
+    ctx.fillStyle = p.color;
+    ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+  }
+  ctx.globalAlpha = 1;
+
+  // Draw enemies
+  for (const enemy of enemies) {
+    ctx.fillStyle = enemy.color;
+    ctx.fillRect(
+      enemy.x - enemy.size / 2,
+      enemy.y - enemy.size / 2,
+      enemy.size,
+      enemy.size,
+    );
+  }
+
+  drawTank(cx, cy);
+  drawHUD(W);
+  drawMusicBtn();
+
+  if (gameOver) drawGameOver(W, H);
 
   requestAnimationFrame(draw);
 }

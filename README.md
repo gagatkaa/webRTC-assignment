@@ -8,6 +8,18 @@ The setup has to be one to one and initiated through a QR code. The project runs
 
 The goal is to build a working minimum viable product and progressively improve it while keeping track of decisions, reflections, and experiments.
 
+## 🔐 SSL Certificates
+ 
+This project runs over HTTPS locally and requires self-signed certificates before starting.
+ 
+Create the `certs/` folder and generate the certificates:
+ 
+```bash
+mkdir certs
+openssl req -x509 -newkey rsa:4096 -keyout certs/localhost.key -out certs/localhost.crt -days 365 -nodes -subj "/CN=localhost"
+```
+ 
+
 ## Week 1 – Concept Thinking
 
 I created a project folder in ChatGPT and uploaded the project brief there so everything stays structured from the beginning and I can document the full thinking process.
@@ -652,3 +664,148 @@ On the game over screen it shows the current score and best score. If you just b
 #### My Reflection
 
 These were all small individual changes but together they make the game feel finished. The particles and sounds give immediate feedback on every action. The best score gives you something to chase on repeat runs. The countdown removes that jarring jump straight into gameplay. None of it is technically complex but it makes a big difference in how the game feels to actually play.
+
+## Week 5 – ICE Failures, Cleanup and Simplification
+ 
+### The Connection Problem
+ 
+Everything worked fine on my home wifi - both phone and desktop connected instantly, Android and iPhone, no issues. But the moment I tested on the university network it broke. The ICE negotiation was getting blocked by the network and the peer connection never completed.
+ 
+I had a socket.io fallback in place for when WebRTC failed but instead of making things more stable it just made the code harder to follow. Two transport paths running in parallel, conditional checks everywhere, state that was hard to reason about. It was not a clean solution - it was a band-aid on top of a band-aid.
+ 
+### Cleaning Up First
+ 
+Before trying to fix the connection problem I decided the code needed a cleanup first. The project had grown messy over the weeks - things added quickly, workarounds left in, commented out code sitting around. `index.js` alone had grown to the point where I deleted over 100 lines that were either redundant, overcomplicated, or left over from earlier experiments.
+ 
+The goal was to get back to something I could actually read and reason about before touching anything else.
+ 
+### What Changed in index.js
+ 
+The server ended up cleaner and more explicit after the rewrite:
+ 
+**Added a crash handler** at the top so uncaught errors don't silently kill the process:
+```javascript
+process.on("uncaughtException", (err) => {
+  console.error("CRASH:", err.message);
+});
+```
+ 
+**Renamed the cert files** from `key.pem` / `cert.pem` to `localhost.key` / `localhost.crt` to make it clearer what they are and align with the generation command in the README.
+ 
+**Converted `emitClientList` from an arrow function to a regular function declaration** - small but more consistent with the rest of the codebase.
+ 
+**Added signal routing log** so it's visible in the console which signals are being relayed and between which peers - useful for debugging ICE issues:
+```javascript
+socket.on("signal", (peerId, signal) => {
+  console.log(`Routing signal ${signal?.type || "unknown"} from ${socket.id} to ${peerId}`);
+  io.to(peerId).emit("signal", peerId, signal, socket.id);
+});
+```
+ 
+### What changed in desktop.js
+
+
+The problem was that I was only using a STUN server:
+
+```javascript
+iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+```
+
+STUN servers only help a device discover its public IP address. On a network that actively blocks peer-to-peer traffic - like a university network - STUN is not enough. The two devices can find each other but cannot actually send data directly between them.
+
+The fix was to add a TURN server to the ICE config:
+
+```javascript
+{
+  urls: [
+    "turn:openrelay.metered.ca:80",
+    "turn:openrelay.metered.ca:443",
+    "turn:openrelay.metered.ca:443?transport=tcp",
+  ],
+  username: "openrelayproject",
+  credential: "openrelayproject",
+}
+```
+
+TURN acts as a relay - instead of the data going directly between the phone and the desktop, it goes through the TURN server. This gets around network restrictions because the traffic looks like normal HTTPS traffic on port 443. The connection is slower than a direct peer-to-peer link but it works everywhere.
+
+I also pulled the ICE config out into its own function so it is easy to swap servers in one place:
+
+```javascript
+function getIceConfig() {
+  return {
+    iceServers: [
+      { urls: "stun:stun.l.google.com:19302" },
+      {
+        urls: [
+          "turn:openrelay.metered.ca:80",
+          "turn:openrelay.metered.ca:443",
+          "turn:openrelay.metered.ca:443?transport=tcp",
+        ],
+        username: "openrelayproject",
+        credential: "openrelayproject",
+      },
+    ],
+  };
+}
+```
+
+### What Changed in controller.js
+
+Same TURN server fix as desktop.js - the before version only had a STUN server which is why the connection failed on the university network. TURN was added to the ICE config:
+
+
+A few other things were cleaned up at the same time:
+
+**`destroyPeer()` function** - before, peer cleanup was just `peer.destroy()` called inline. Now it's a proper function with a try/catch and a null check, and it's called on disconnect so a stale peer doesn't linger:
+
+```javascript
+socket.on("disconnect", (reason) => {
+  stopAutoFire();
+  destroyPeer(); // ← now called on disconnect
+  statusEl.textContent = "Disconnected - reconnecting...";
+});
+```
+
+**iOS permission fix** - the before version called `DeviceOrientationEvent.requestPermission()` after `startWebRTC()`. iOS requires the permission prompt to be the first thing inside a user gesture handler - any `await` before it breaks the gesture context and Safari silently fails. The after version requests both motion and orientation permissions first, before anything else runs:
+
+```javascript
+const [motionPermission, orientationPermission] = await Promise.all([
+  DeviceMotionEvent.requestPermission(),
+  DeviceOrientationEvent.requestPermission(),
+]);
+```
+
+**Joystick removed** - the before version had a full virtual joystick fallback for devices without a gyroscope. It was removed to keep the controller focused. The gyroscope is required to play.
+
+**`log()` made safe** - the debug div is now commented out in the HTML by default. The `log()` function was updated to check if `debugEl` exists before writing to it so the page doesn't crash when the div is absent:
+
+```javascript
+function log(message) {
+  console.log(message);
+  if (!debugEl) return;
+  // ...
+}
+```
+
+
+After those changes the connection worked on the university network.
+
+
+### My Reflection
+ 
+The university network problem was frustrating because it only showed up in one specific environment and worked everywhere else. Trying to patch around it with a socket fallback made the codebase harder to manage than the problem itself. Stepping back, deleting the overcomplicated parts, and simplifying first was the right call - it's much easier to debug a clean codebase than a messy one.
+
+## Cleaning Up the File Structure
+ 
+With the connection finally stable I turned my attention to the project structure. Everything had been growing organically and the CSS had ended up in the wrong places. I split the styling into dedicated files - one for the desktop game view, one for the controller - so each file only contains what it needs. Much easier to find things and make changes without worrying about breaking something on the other page.
+ 
+### Styling
+ 
+This was probably the most enjoyable part of the whole project so far. With the structure clean I could actually focus on making the game look good and watch it come together visually. I switched everything over to Press Start 2P to give it a consistent retro feel - the HUD, the overlays, the controller buttons, all of it. Seeing it go from raw canvas with plain system fonts to something that actually looks like a game was satisfying.
+ 
+I also added the instructions section to the desktop overlay so new players know what to expect before connecting their phone. The debug div on the controller was commented out since the connection is stable and there is nothing left to debug - the phone UI is now clean with just the status text and buttons.
+ 
+### Adding Power-ups
+ 
+With the game feeling solid I moved on to the feature I had been planning since week 4 - collectibles and power-ups. The idea was to spawn random pick-ups on the screen that the tank collects by moving over them, each one giving a temporary effect. Things like a speed boost, a shield, or faster shooting to make each run feel different and give the player something to chase beyond just the score.
