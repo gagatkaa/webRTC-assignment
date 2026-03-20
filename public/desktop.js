@@ -360,7 +360,7 @@ function restartGame() {
   startCountdown();
 }
 
-// ── Enemies ─────────────────────────────────────────────────────────────────
+// ── Enemies ───────────────────────────────────────────────────────────────────
 function rand(min, max) {
   return min + Math.random() * (max - min);
 }
@@ -371,9 +371,11 @@ function pick(arr) {
 
 function spawnParticles(x, y, color, size) {
   const count = 8 + Math.random() * 4;
-  for (let i = 0; i < count; i++) {
+
+  for (let i = 0; i < count; i += 1) {
     const angle = Math.random() * Math.PI * 2;
     const speed = 2 + Math.random() * 4;
+
     particles.push({
       x,
       y,
@@ -390,7 +392,9 @@ function spawnEnemy() {
   const W = canvas.width;
   const H = canvas.height;
   const side = (Math.random() * 4) | 0;
-  let x, y;
+
+  let x;
+  let y;
 
   if (side === 0) {
     x = -SPAWN_MARGIN;
@@ -430,8 +434,12 @@ function startSpawnCycle() {
 
   function scheduleSpawn() {
     spawnTimeoutId = setTimeout(() => {
-      if (!gameOver && gameStarted) spawnEnemy();
-      if (!gameOver) scheduleSpawn();
+      if (!gameOver && gameStarted) {
+        spawnEnemy();
+      }
+      if (!gameOver) {
+        scheduleSpawn();
+      }
     }, getSpawnInterval());
   }
 
