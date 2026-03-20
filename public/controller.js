@@ -3,9 +3,15 @@ const enableBtn = document.getElementById("enable");
 const restartBtn = document.getElementById("restart");
 const debugEl = document.getElementById("debug");
 
-function log(msg) {
-  console.log(msg);
-  debugEl.innerHTML += msg + "<br>";
+function log(message) {
+  console.log(message);
+  debugEl.innerHTML += `${message}<br>`;
+
+  const lines = debugEl.innerHTML.split("<br>");
+  if (lines.length > 24) {
+    debugEl.innerHTML = lines.slice(-24).join("<br>");
+  }
+
   debugEl.scrollTop = debugEl.scrollHeight;
 }
 
@@ -16,8 +22,8 @@ function clamp(value, min, max) {
 const params = new URLSearchParams(location.search);
 const targetId = params.get("target") || params.get("id");
 
-log("Protocol: " + location.protocol);
-log("Target: " + (targetId || "MISSING"));
+log(`Protocol: ${location.protocol}`);
+log(`Target: ${targetId || "MISSING"}`);
 
 if (!targetId) {
   statusEl.textContent = "No target ID — scan the QR from the desktop.";
@@ -27,16 +33,16 @@ if (!targetId) {
 const socket = io({ reconnection: true });
 
 socket.on("connect", () => {
-  log("Socket " + socket.id);
-  statusEl.textContent = "Connected! Press Enable Motion.";
+  log(`Socket connected: ${socket.id}`);
+  statusEl.textContent = "Connected. Press Enable Motion.";
 });
 
 socket.on("connect_error", (err) => {
-  log("Socket error " + err.message);
+  log(`Socket error: ${err.message}`);
 });
 
 socket.on("disconnect", (reason) => {
-  log("Socket disconnected: " + reason);
+  log(`Socket disconnected: ${reason}`);
   stopAutoFire();
   destroyPeer();
   statusEl.textContent = "Disconnected — reconnecting...";
@@ -83,7 +89,7 @@ function createPeer() {
   });
 
   peer.on("signal", (data) => {
-    log("Sending signal type: " + data.type);
+    log(`Sending signal: ${data.type}`);
     socket.emit("signal", targetId, data);
   });
 
@@ -134,6 +140,8 @@ socket.on("signal", (_myId, signalData, fromSocketId) => {
 
   try {
     peer.signal(signalData);
+  } catch (err) {
+    log(`peer.signal error: ${err.message}`);
   }
 });
 
@@ -143,8 +151,8 @@ function sendData(type, payload) {
 
   try {
     peer.send(JSON.stringify({ type, data: payload }));
-  } else {
-    log("WebRTC not ready, dropping: " + type);
+  } catch (err) {
+    log(`Send error: ${err.message}`);
   }
 }
 
@@ -197,15 +205,13 @@ let orientationListening = false;
 async function enableMotion() {
   if (!targetId) return;
 
-enableBtn.addEventListener("click", async () => {
-  noSleep.enable();
-  log("Button clicked, protocol=" + location.protocol);
+  log(`Button clicked, protocol=${location.protocol}`);
 
   try {
-  if (
+    if (
       typeof DeviceMotionEvent !== "undefined" &&
       typeof DeviceMotionEvent.requestPermission === "function"
-  ) {
+    ) {
       log("Requesting iOS motion/orientation permissions...");
 
       const [motionPermission, orientationPermission] = await Promise.all([
@@ -233,10 +239,10 @@ enableBtn.addEventListener("click", async () => {
     }
 
     createPeer();
-  startMotion();
+    startMotion();
 
     enableBtn.style.display = "none";
-  restartBtn.style.display = "inline-block";
+    restartBtn.style.display = "inline-block";
   } catch (err) {
     log(`Permission error: ${err.message}`);
     statusEl.textContent = "Could not enable motion permission.";
