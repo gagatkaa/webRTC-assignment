@@ -155,36 +155,33 @@ enableBtn.addEventListener("click", async () => {
   startWebRTC();
   startMotion();
   restartBtn.style.display = "inline-block";
-});
-
-restartBtn.addEventListener("click", () => {
-  log("Restart requested");
-  sendData("restart", {});
-});
-
-// ── Motion / Joystick ─────────────────────────────────────────────────────────
+  } catch (err) {
+    log(`Permission error: ${err.message}`);
+    statusEl.textContent = "Could not enable motion permission.";
+  }
+}
 function startMotion() {
-  enableBtn.style.display = "none";
-  statusEl.textContent = "Tilt your phone to control the tank!";
+  if (orientationListening) return;
+
+  orientationListening = true;
+  statusEl.textContent = "Waiting for P2P connection...";
   log("Listening for deviceorientation...");
 
   maybeStartAutoFire();
 
   let count = 0;
-  window.addEventListener("deviceorientation", (e) => {
-    count++;
-    if (count <= 3)
-      log(
-        "event #" +
-          count +
-          ": gamma=" +
-          e.gamma?.toFixed(1) +
-          " beta=" +
-          e.beta?.toFixed(1),
-      );
 
-    const gx = clamp((e.gamma ?? 0) / 30, -1, 1);
-    const gy = clamp((e.beta ?? 0) / 40, -1, 1);
+  window.addEventListener("deviceorientation", (event) => {
+    count += 1;
+
+    if (count <= 3) {
+      log(
+        `event #${count}: gamma=${event.gamma?.toFixed(1)} beta=${event.beta?.toFixed(1)}`,
+      );
+    }
+
+    const gx = clamp((event.gamma ?? 0) / 30, -1, 1);
+    const gy = clamp((event.beta ?? 0) / 40, -1, 1);
 
     sendMove(gx, gy);
     setAim(gx, gy);
@@ -197,8 +194,3 @@ restartBtn.addEventListener("click", () => {
   log("Restart requested");
   sendData("restart", {});
 });
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-function clamp(v, min, max) {
-  return Math.max(min, Math.min(max, v));
-}
