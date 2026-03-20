@@ -6,7 +6,7 @@ const debugEl = document.getElementById("debug");
 function log(message) {
   console.log(message);
   if (!debugEl) return;
-  
+
   debugEl.innerHTML += `${message}<br>`;
 
   const lines = debugEl.innerHTML.split("<br>");
@@ -97,8 +97,7 @@ function createPeer() {
 
   peer.on("connect", () => {
     log("P2P connected!");
-    statusEl.textContent =
-      "P2P connected! Tilt your phone to control the tank.";
+    statusEl.textContent = "Tilt your phone to control the tank.";
   });
 
   peer.on("data", (data) => {
