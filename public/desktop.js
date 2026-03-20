@@ -213,13 +213,13 @@ function startCountdown() {
   }, 1000);
 }
 
-// ── Music ────────────────────────────────────────────────────────────────────
+// ── Audio ─────────────────────────────────────────────────────────────────────
 const bgMusic = new Audio("/music.mp3");
 bgMusic.loop = true;
 bgMusic.volume = 0.4;
-bgMusic.addEventListener("error", (e) =>
-  console.error("Music error:", e, bgMusic.error),
-);
+bgMusic.addEventListener("error", (e) => {
+  console.error("Music error:", e, bgMusic.error);
+});
 
 let musicPlaying = true;
 
@@ -227,13 +227,14 @@ const enemyHitSound = new Audio("/enemyHitSound.wav");
 const playerHitSound = new Audio("/playerHitSound.wav");
 enemyHitSound.volume = 0.3;
 
-// ── Music button hit area ────────────────────────────────────────────────────
+// ── Music button hit area ─────────────────────────────────────────────────────
 const musicBtn = { x: 110, y: 44, w: 22, h: 22 };
 
 canvas.addEventListener("click", (e) => {
   const rect = canvas.getBoundingClientRect();
   const mx = e.clientX - rect.left;
   const my = e.clientY - rect.top;
+
   if (
     mx >= musicBtn.x &&
     mx <= musicBtn.x + musicBtn.w &&
@@ -241,8 +242,11 @@ canvas.addEventListener("click", (e) => {
     my <= musicBtn.y + musicBtn.h
   ) {
     musicPlaying = !musicPlaying;
+
     if (musicPlaying) {
-      if (gameStarted && !gameOver) bgMusic.play().catch(() => {});
+      if (gameStarted && !gameOver) {
+        bgMusic.play().catch(() => {});
+      }
     } else {
       bgMusic.pause();
     }
