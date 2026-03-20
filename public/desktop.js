@@ -253,28 +253,29 @@ canvas.addEventListener("click", (e) => {
   }
 });
 
-// ── QR / overlay ─────────────────────────────────────────────────────────────
+// ── QR / overlay ──────────────────────────────────────────────────────────────
 socket.on("connect", () => {
-  // Build the controller URL using OUR socket id as the target
   const controllerURL = `${location.protocol}//${location.host}/controller.html?target=${socket.id}`;
-
   statusEl.textContent = "Scan to connect your phone:";
 
   const qr = qrcode(0, "M");
   qr.addData(controllerURL);
   qr.make();
+
   qrEl.innerHTML = qr.createImgTag(4, 8);
+  console.log("Desktop socket connected:", socket.id);
 });
 
-// ── Resize ───────────────────────────────────────────────────────────────────
+// ── Resize ────────────────────────────────────────────────────────────────────
 function resize() {
   canvas.width = window.innerWidth;
   canvas.height = window.innerHeight;
 }
+
 window.addEventListener("resize", resize);
 resize();
 
-// ── Game Logic ──────────────────────────────────────────────────────────────
+// ── Data channel messages ─────────────────────────────────────────────────────
 function handleDataChannelMessage(msg) {
   if (msg.type === "update") {
     handleUpdate(msg.data);
@@ -287,6 +288,8 @@ function handleDataChannelMessage(msg) {
 
 function handleUpdate(data) {
   if (gameOver) return;
+  if (!gameStarted) return;
+
   phoneConnected = true;
 
   if (typeof data.gx === "number") tankX = data.gx;
@@ -304,11 +307,14 @@ function handleUpdate(data) {
 }
 
 function handleShoot(payload) {
+  if (!gameStarted || gameOver) return;
+
   let dirX = typeof payload?.dirX === "number" ? payload.dirX : aimX;
   let dirY = typeof payload?.dirY === "number" ? payload.dirY : aimY;
 
   const mag = Math.hypot(dirX, dirY);
   if (mag < 0.001) return;
+
   dirX /= mag;
   dirY /= mag;
 
