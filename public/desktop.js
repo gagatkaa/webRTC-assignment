@@ -15,31 +15,65 @@ const readyScreenEl = document.getElementById("ready-screen");
 let peer = null;
 let controllerSocketId = null;
 
-socket.on("signal", (peerId, signalData, fromSocketId) => {
-  if (!peer) {
+function getIceConfig() {
+  return {
+    iceServers: [
+      { urls: "stun:stun.l.google.com:19302" },
+      {
+        urls: [
+          "turn:openrelay.metered.ca:80",
+          "turn:openrelay.metered.ca:443",
+          "turn:openrelay.metered.ca:443?transport=tcp",
+        ],
+        username: "openrelayproject",
+        credential: "openrelayproject",
+      },
+    ],
+  };
+}
+
+function destroyPeer() {
+  if (!peer) return;
+  try {
+    peer.destroy();
+  } catch (err) {
+    console.error("Destroy peer error:", err);
+  }
+  peer = null;
+}
+
+function createPeerForOffer(fromSocketId) {
+  destroyPeer();
     controllerSocketId = fromSocketId;
+
+  console.log("Creating desktop peer for controller:", controllerSocketId);
+
     peer = new SimplePeer({
       initiator: false,
       trickle: true,
-      config: {
-        iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
-      },
+    config: getIceConfig(),
     });
 
     peer.on("signal", (data) => {
+    console.log("Desktop sending signal:", data.type, data);
       socket.emit("signal", controllerSocketId, data);
     });
 
     peer.on("connect", () => {
+    console.log("Desktop peer connected");
       phoneConnected = true;
+    statusEl.textContent = "Phone connected!";
       showReadyScreen();
     });
 
     peer.on("data", (data) => {
+    const text = data.toString();
+    console.log("Desktop received data:", text);
+
       try {
-        handleDataChannelMessage(JSON.parse(data));
-      } catch (e) {
-        console.warn("Failed to parse data:", e);
+      handleDataChannelMessage(JSON.parse(text));
+    } catch (err) {
+      console.warn("Failed to parse data:", err);
       }
     });
 
