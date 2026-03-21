@@ -28,8 +28,6 @@ const COLOR_WAITING = "#f80";
 const COLOR_GAMEOVER_BG = "rgba(0,0,0,0.6)";
 const COLOR_BEST = "#ffd400";
 
-const COLOR_MUSIC_BTN_BG = "rgba(255,255,255,0.08)";
-const COLOR_MUSIC_BTN_BORDER = "#555";
 const COLOR_MUSIC_ICON = "#ccc";
 
 const ENEMY_COLORS = ["#ff2d2d", "#ff7a00", "#ffd400"];
@@ -88,16 +86,13 @@ function destroyPeer() {
   if (!peer) return;
   try {
     peer.destroy();
-  } catch (err) {
-    console.error("Destroy peer error:", err);
-  }
+  } catch (err) {}
   peer = null;
 }
 
 function createPeerForOffer(fromSocketId) {
   destroyPeer();
   controllerSocketId = fromSocketId;
-  console.log("Creating desktop peer for controller:", controllerSocketId);
 
   peer = new SimplePeer({
     initiator: false,
@@ -106,72 +101,38 @@ function createPeerForOffer(fromSocketId) {
   });
 
   peer.on("signal", (data) => {
-    console.log("Desktop sending signal:", data.type, data);
     socket.emit("signal", controllerSocketId, data);
   });
 
   peer.on("connect", () => {
-    console.log("Desktop peer connected");
     phoneConnected = true;
     statusEl.textContent = "Phone connected!";
     showReadyScreen();
   });
 
   peer.on("data", (data) => {
-    const text = data.toString();
-    console.log("Desktop received data:", text);
     try {
-      handleDataChannelMessage(JSON.parse(text));
-    } catch (err) {
-      console.warn("Failed to parse data:", err);
-    }
+      handleDataChannelMessage(JSON.parse(data.toString()));
+    } catch (err) {}
   });
 
   peer.on("close", () => {
-    console.log("Peer connection closed");
     peer = null;
     phoneConnected = false;
   });
 
-  peer.on("error", (err) => {
-    console.error("Desktop peer error:", err);
-  });
-
-  const pc = peer._pc;
-  if (pc) {
-    pc.addEventListener("iceconnectionstatechange", () => {
-      console.log("Desktop ICE state:", pc.iceConnectionState);
-    });
-    pc.addEventListener("connectionstatechange", () => {
-      console.log("Desktop PC state:", pc.connectionState);
-    });
-    pc.addEventListener("icegatheringstatechange", () => {
-      console.log("Desktop ICE gathering:", pc.iceGatheringState);
-    });
-  }
+  peer.on("error", () => {});
 }
 
 socket.on("signal", (_peerId, signalData, fromSocketId) => {
-  console.log(
-    "Signal received from phone:",
-    signalData.type,
-    signalData,
-    fromSocketId,
-  );
-
   if (!peer) {
-    if (signalData.type !== "offer") {
-      console.warn("Ignoring non-offer because no peer exists yet.");
-      return;
-    }
+    if (signalData.type !== "offer") return;
     createPeerForOffer(fromSocketId);
   }
 
   try {
     peer.signal(signalData);
-  } catch (err) {
-    console.error("peer.signal error:", err);
-  }
+  } catch (err) {}
 });
 
 // ── Game state ────────────────────────────────────────────────────────────────
@@ -217,13 +178,10 @@ function handleLetsGo() {
   readyScreenEl.classList.remove("show");
 
   [enemyHitSound, playerHitSound].forEach((sound) => {
-    sound
-      .play()
-      .then(() => {
-        sound.pause();
-        sound.currentTime = 0;
-      })
-      .catch(() => {});
+    sound.play().then(() => {
+      sound.pause();
+      sound.currentTime = 0;
+    }).catch(() => {});
   });
 
   if (musicPlaying) bgMusic.play().catch(() => {});
@@ -263,9 +221,6 @@ function startCountdown() {
 const bgMusic = new Audio("sound/music.mp3");
 bgMusic.loop = true;
 bgMusic.volume = 0.4;
-bgMusic.addEventListener("error", (e) => {
-  console.error("Music error:", e, bgMusic.error);
-});
 
 let musicPlaying = true;
 
@@ -315,19 +270,10 @@ function spawnPowerup() {
   const side = (Math.random() * 4) | 0;
   let x, y;
 
-  if (side === 0) {
-    x = -SPAWN_MARGIN;
-    y = rand(0, H);
-  } else if (side === 1) {
-    x = W + SPAWN_MARGIN;
-    y = rand(0, H);
-  } else if (side === 2) {
-    x = rand(0, W);
-    y = -SPAWN_MARGIN;
-  } else {
-    x = rand(0, W);
-    y = H + SPAWN_MARGIN;
-  }
+  if (side === 0)      { x = -SPAWN_MARGIN; y = rand(0, H); }
+  else if (side === 1) { x = W + SPAWN_MARGIN; y = rand(0, H); }
+  else if (side === 2) { x = rand(0, W); y = -SPAWN_MARGIN; }
+  else                 { x = rand(0, W); y = H + SPAWN_MARGIN; }
 
   const def = pickWeighted();
   powerups.push({ x, y, ...def });
@@ -338,6 +284,10 @@ function startPowerupCycle() {
   powerupIntervalId = setInterval(() => {
     if (!gameOver && gameStarted) spawnPowerup();
   }, POWERUP_SPAWN_INTERVAL);
+}
+
+function showToast(message, color) {
+  activeToast = { message, color, life: 1 };
 }
 
 function applyPowerup(type) {
@@ -353,38 +303,29 @@ function applyPowerup(type) {
   if (type === "bigBullet") {
     bigBulletActive = true;
     clearTimeout(bigBulletTimer);
-    bigBulletTimer = setTimeout(() => {
-      bigBulletActive = false;
-    }, 10000);
+    bigBulletTimer = setTimeout(() => { bigBulletActive = false; }, 10000);
     showToast("BIG BULLETS", "#44aaff");
   }
   if (type === "tripleShot") {
     tripleShotActive = true;
     clearTimeout(tripleShotTimer);
-    tripleShotTimer = setTimeout(() => {
-      tripleShotActive = false;
-    }, 10000);
+    tripleShotTimer = setTimeout(() => { tripleShotActive = false; }, 10000);
     showToast("TRIPLE SHOT", "#2266ff");
   }
   if (type === "slow") {
     slowActive = true;
     clearTimeout(slowTimer);
-    slowTimer = setTimeout(() => {
-      slowActive = false;
-    }, 10000);
+    slowTimer = setTimeout(() => { slowActive = false; }, 10000);
     showToast("ENEMIES SLOW", "#aa22ff");
   }
 }
+
 function spawnParticles_nuke() {
   for (const enemy of enemies) {
     spawnParticles(enemy.x, enemy.y, enemy.color, enemy.size);
   }
   enemyHitSound.currentTime = 0;
   enemyHitSound.play().catch(() => {});
-}
-
-function showToast(message, color) {
-  activeToast = { message, color, life: 1 };
 }
 
 // ── QR / overlay ──────────────────────────────────────────────────────────────
@@ -460,14 +401,8 @@ function handleShoot(payload) {
 
   if (tripleShotActive) {
     const spread = 0.3;
-    const left = {
-      x: dirX * Math.cos(-spread) - dirY * Math.sin(-spread),
-      y: dirX * Math.sin(-spread) + dirY * Math.cos(-spread),
-    };
-    const right = {
-      x: dirX * Math.cos(spread) - dirY * Math.sin(spread),
-      y: dirX * Math.sin(spread) + dirY * Math.cos(spread),
-    };
+    const left  = { x: dirX * Math.cos(-spread) - dirY * Math.sin(-spread), y: dirX * Math.sin(-spread) + dirY * Math.cos(-spread) };
+    const right = { x: dirX * Math.cos(spread)  - dirY * Math.sin(spread),  y: dirX * Math.sin(spread)  + dirY * Math.cos(spread) };
     shootBullet(cx, cy, dirX, dirY);
     shootBullet(cx, cy, left.x, left.y);
     shootBullet(cx, cy, right.x, right.y);
@@ -493,15 +428,8 @@ function restartGame() {
   aimX = 1;
   aimY = 0;
 
-  if (spawnTimeoutId) {
-    clearTimeout(spawnTimeoutId);
-    spawnTimeoutId = null;
-  }
-
-  if (powerupIntervalId) {
-    clearInterval(powerupIntervalId);
-    powerupIntervalId = null;
-  }
+  if (spawnTimeoutId) { clearTimeout(spawnTimeoutId); spawnTimeoutId = null; }
+  if (powerupIntervalId) { clearInterval(powerupIntervalId); powerupIntervalId = null; }
 
   bigBulletActive = false;
   tripleShotActive = false;
@@ -527,8 +455,7 @@ function spawnParticles(x, y, color, size) {
     const angle = Math.random() * Math.PI * 2;
     const speed = 2 + Math.random() * 4;
     particles.push({
-      x,
-      y,
+      x, y,
       vx: Math.cos(angle) * speed,
       vy: Math.sin(angle) * speed,
       size: size * 0.3 * (0.5 + Math.random() * 0.5),
@@ -545,23 +472,13 @@ function spawnEnemy() {
 
   let x, y;
 
-  if (side === 0) {
-    x = -SPAWN_MARGIN;
-    y = rand(0, H);
-  } else if (side === 1) {
-    x = W + SPAWN_MARGIN;
-    y = rand(0, H);
-  } else if (side === 2) {
-    x = rand(0, W);
-    y = -SPAWN_MARGIN;
-  } else {
-    x = rand(0, W);
-    y = H + SPAWN_MARGIN;
-  }
+  if (side === 0)      { x = -SPAWN_MARGIN; y = rand(0, H); }
+  else if (side === 1) { x = W + SPAWN_MARGIN; y = rand(0, H); }
+  else if (side === 2) { x = rand(0, W); y = -SPAWN_MARGIN; }
+  else                 { x = rand(0, W); y = H + SPAWN_MARGIN; }
 
   enemies.push({
-    x,
-    y,
+    x, y,
     size: rand(ENEMY_SIZE_MIN, ENEMY_SIZE_MAX),
     speed: rand(ENEMY_SPEED_MIN, ENEMY_SPEED_MAX),
     color: pick(ENEMY_COLORS),
@@ -604,9 +521,7 @@ function drawPixelHeart(ctx, x, y, size, color) {
   ctx.fillStyle = color;
   for (let row = 0; row < grid.length; row++) {
     for (let col = 0; col < grid[row].length; col++) {
-      if (grid[row][col]) {
-        ctx.fillRect(x + col * p, y + row * p, p, p);
-      }
+      if (grid[row][col]) ctx.fillRect(x + col * p, y + row * p, p, p);
     }
   }
 }
@@ -616,16 +531,10 @@ function drawGrid(W, H) {
   ctx.strokeStyle = COLOR_GRID;
   ctx.lineWidth = 1;
   for (let x = 0; x < W; x += 40) {
-    ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, H);
-    ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
   }
   for (let y = 0; y < H; y += 40) {
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(W, y);
-    ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
   }
 }
 
@@ -659,16 +568,12 @@ function drawHUD(W) {
   const heartSize = 25;
   const totalHearts = 5;
   const startX = W - 20 - totalHearts * (heartSize + 4);
-
   for (let i = 0; i < totalHearts; i++) {
-    const hx = startX + i * (heartSize + 6);
-    const color = i < lives ? COLOR_HEART : COLOR_HEART_EMPTY;
-    drawPixelHeart(ctx, hx, 22, heartSize, color);
+    drawPixelHeart(ctx, startX + i * (heartSize + 6), 22, heartSize, i < lives ? COLOR_HEART : COLOR_HEART_EMPTY);
   }
 
   const connected = peer?.connected;
   const dotColor = connected ? COLOR_CONNECTED : COLOR_WAITING;
-  const label = connected ? "WebRTC" : "Waiting...";
 
   ctx.fillStyle = dotColor;
   ctx.beginPath();
@@ -678,11 +583,10 @@ function drawHUD(W) {
   ctx.fillStyle = dotColor;
   ctx.textAlign = "left";
   ctx.font = `10px ${FONT}`;
-  ctx.fillText(label, 36, 42);
+  ctx.fillText(connected ? "WebRTC" : "Waiting...", 36, 42);
 
   if (activeToast) {
     activeToast.life -= 0.003;
-
     if (activeToast.life <= 0) {
       activeToast = null;
     } else {
@@ -698,15 +602,13 @@ function drawHUD(W) {
 
 function drawMusicBtn() {
   const { x: bx, y: by, w: bs } = musicBtn;
-
   const iconX = bx + bs / 2;
   const iconY = by + bs / 2;
-  const p = 4; // pixel size
+  const p = 4;
 
   ctx.fillStyle = COLOR_MUSIC_ICON;
 
   if (musicPlaying) {
-    // Pixel pause — two columns of pixels
     const pauseGrid = [
       [1, 0, 1],
       [1, 0, 1],
@@ -718,13 +620,10 @@ function drawMusicBtn() {
     const offY = iconY - (pauseGrid.length * p) / 2;
     for (let row = 0; row < pauseGrid.length; row++) {
       for (let col = 0; col < pauseGrid[row].length; col++) {
-        if (pauseGrid[row][col]) {
-          ctx.fillRect(offX + col * p, offY + row * p, p, p);
-        }
+        if (pauseGrid[row][col]) ctx.fillRect(offX + col * p, offY + row * p, p, p);
       }
     }
   } else {
-    // Pixel play arrow
     const playGrid = [
       [1, 0, 0, 0, 0],
       [1, 1, 0, 0, 0],
@@ -738,9 +637,7 @@ function drawMusicBtn() {
     const offY = iconY - (playGrid.length * p) / 2;
     for (let row = 0; row < playGrid.length; row++) {
       for (let col = 0; col < playGrid[row].length; col++) {
-        if (playGrid[row][col]) {
-          ctx.fillRect(offX + col * p, offY + row * p, p, p);
-        }
+        if (playGrid[row][col]) ctx.fillRect(offX + col * p, offY + row * p, p, p);
       }
     }
   }
@@ -758,13 +655,12 @@ function drawGameOver(W, H) {
   ctx.font = `24px ${FONT}`;
   ctx.fillText(`score: ${score}`, W / 2, H / 2 + 48);
 
+  ctx.font = `18px ${FONT}`;
   if (score >= bestScore && score > 0) {
     ctx.fillStyle = COLOR_BEST;
-    ctx.font = `18px ${FONT}`;
     ctx.fillText("NEW BEST!", W / 2, H / 2 + 76);
   } else {
     ctx.fillStyle = COLOR_TEXT_DIM;
-    ctx.font = `18px ${FONT}`;
     ctx.fillText(`best: ${bestScore}`, W / 2, H / 2 + 76);
   }
 
@@ -789,12 +685,7 @@ function draw() {
     const bullet = bullets[i];
     bullet.x += bullet.vx;
     bullet.y += bullet.vy;
-    if (
-      bullet.x < -80 ||
-      bullet.x > W + 80 ||
-      bullet.y < -80 ||
-      bullet.y > H + 80
-    ) {
+    if (bullet.x < -80 || bullet.x > W + 80 || bullet.y < -80 || bullet.y > H + 80) {
       bullets.splice(i, 1);
     }
   }
@@ -857,12 +748,7 @@ function draw() {
   // Draw bullets
   ctx.fillStyle = COLOR_BULLET;
   for (const bullet of bullets) {
-    ctx.fillRect(
-      bullet.x - bullet.size / 2,
-      bullet.y - bullet.size / 2,
-      bullet.size,
-      bullet.size,
-    );
+    ctx.fillRect(bullet.x - bullet.size / 2, bullet.y - bullet.size / 2, bullet.size, bullet.size);
   }
 
   // Draw particles
@@ -871,10 +757,7 @@ function draw() {
     p.x += p.vx;
     p.y += p.vy;
     p.life -= 0.03;
-    if (p.life <= 0) {
-      particles.splice(i, 1);
-      continue;
-    }
+    if (p.life <= 0) { particles.splice(i, 1); continue; }
     ctx.globalAlpha = p.life;
     ctx.fillStyle = p.color;
     ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
@@ -884,30 +767,15 @@ function draw() {
   // Draw enemies
   for (const enemy of enemies) {
     ctx.fillStyle = enemy.color;
-    ctx.fillRect(
-      enemy.x - enemy.size / 2,
-      enemy.y - enemy.size / 2,
-      enemy.size,
-      enemy.size,
-    );
+    ctx.fillRect(enemy.x - enemy.size / 2, enemy.y - enemy.size / 2, enemy.size, enemy.size);
   }
 
   // Draw power-ups
   for (const pu of powerups) {
     ctx.fillStyle = pu.color;
-    ctx.fillRect(
-      pu.x - POWERUP_SIZE / 2,
-      pu.y - POWERUP_SIZE / 2,
-      POWERUP_SIZE,
-      POWERUP_SIZE,
-    );
+    ctx.fillRect(pu.x - POWERUP_SIZE / 2, pu.y - POWERUP_SIZE / 2, POWERUP_SIZE, POWERUP_SIZE);
     ctx.fillStyle = "rgba(0,0,0,0.4)";
-    ctx.fillRect(
-      pu.x - POWERUP_SIZE / 4,
-      pu.y - POWERUP_SIZE / 4,
-      POWERUP_SIZE / 2,
-      POWERUP_SIZE / 2,
-    );
+    ctx.fillRect(pu.x - POWERUP_SIZE / 4, pu.y - POWERUP_SIZE / 4, POWERUP_SIZE / 2, POWERUP_SIZE / 2);
   }
 
   drawTank(cx, cy);
