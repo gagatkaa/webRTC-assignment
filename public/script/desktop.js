@@ -49,6 +49,20 @@ const ENEMY_SPEED_MAX = 1.2;
 const ENEMY_SIZE_MIN = 18;
 const ENEMY_SIZE_MAX = 34;
 
+// ── Power-up constants ────────────────────────────────────────────────────────
+const POWERUP_SIZE = 24;
+const POWERUP_SPEED = 0.6;
+const POWERUP_SPAWN_INTERVAL = 10000;
+const POWERUP_MAX = 2;
+
+const POWERUPS = [
+  { type: "extraLife", color: "#44ff88", weight: 4 },
+  { type: "bigBullet", color: "#44aaff", weight: 2 },
+  { type: "tripleShot", color: "#2266ff", weight: 2 },
+  { type: "nuke", color: "#cc44ff", weight: 3 },
+  { type: "slow", color: "#aa22ff", weight: 2 },
+];
+
 // ── WebRTC ────────────────────────────────────────────────────────────────────
 let peer = null;
 let controllerSocketId = null;
@@ -179,6 +193,17 @@ const enemies = [];
 const particles = [];
 let spawnTimeoutId = null;
 
+const powerups = [];
+let powerupIntervalId = null;
+
+// Active effects
+let bigBulletActive = false;
+let tripleShotActive = false;
+let slowActive = false;
+let bigBulletTimer = null;
+let tripleShotTimer = null;
+let slowTimer = null;
+
 // ── Ready screen / countdown ──────────────────────────────────────────────────
 function showReadyScreen() {
   if (gameStarted) return;
@@ -228,6 +253,7 @@ function startCountdown() {
     startTime = Date.now();
     gameStarted = true;
     startSpawnCycle();
+    startPowerupCycle();
   }, 1000);
 }
 
@@ -267,6 +293,93 @@ canvas.addEventListener("click", (e) => {
     }
   }
 });
+
+// ── Power-ups ─────────────────────────────────────────────────────────────────
+function pickWeighted() {
+  const total = POWERUPS.reduce((sum, p) => sum + p.weight, 0);
+  let r = Math.random() * total;
+  for (const p of POWERUPS) {
+    r -= p.weight;
+    if (r <= 0) return p;
+  }
+  return POWERUPS[0];
+}
+
+function spawnPowerup() {
+  if (powerups.length >= POWERUP_MAX) return;
+
+  const W = canvas.width;
+  const H = canvas.height;
+  const side = (Math.random() * 4) | 0;
+  let x, y;
+
+  if (side === 0) {
+    x = -SPAWN_MARGIN;
+    y = rand(0, H);
+  } else if (side === 1) {
+    x = W + SPAWN_MARGIN;
+    y = rand(0, H);
+  } else if (side === 2) {
+    x = rand(0, W);
+    y = -SPAWN_MARGIN;
+  } else {
+    x = rand(0, W);
+    y = H + SPAWN_MARGIN;
+  }
+
+  const def = pickWeighted();
+  powerups.push({ x, y, ...def });
+}
+
+function startPowerupCycle() {
+  if (powerupIntervalId) clearInterval(powerupIntervalId);
+  powerupIntervalId = setInterval(() => {
+    if (!gameOver && gameStarted) spawnPowerup();
+  }, POWERUP_SPAWN_INTERVAL);
+}
+
+function applyPowerup(type) {
+  if (type === "extraLife") {
+    lives = Math.min(lives + 1, 5);
+  }
+
+  if (type === "nuke") {
+    spawnParticles_nuke();
+    enemies.length = 0;
+  }
+
+  if (type === "bigBullet") {
+    bigBulletActive = true;
+    clearTimeout(bigBulletTimer);
+    bigBulletTimer = setTimeout(() => {
+      bigBulletActive = false;
+    }, 10000);
+  }
+
+  if (type === "tripleShot") {
+    tripleShotActive = true;
+    clearTimeout(tripleShotTimer);
+    tripleShotTimer = setTimeout(() => {
+      tripleShotActive = false;
+    }, 10000);
+  }
+
+  if (type === "slow") {
+    slowActive = true;
+    clearTimeout(slowTimer);
+    slowTimer = setTimeout(() => {
+      slowActive = false;
+    }, 10000);
+  }
+}
+
+function spawnParticles_nuke() {
+  for (const enemy of enemies) {
+    spawnParticles(enemy.x, enemy.y, enemy.color, enemy.size);
+  }
+  enemyHitSound.currentTime = 0;
+  enemyHitSound.play().catch(() => {});
+}
 
 // ── QR / overlay ──────────────────────────────────────────────────────────────
 socket.on("connect", () => {
@@ -329,13 +442,32 @@ function handleShoot(payload) {
   const cx = W / 2 + tankX * (W / 2 - 40);
   const cy = H / 2 + tankY * (H / 2 - 40);
 
-  bullets.push({
-    x: cx + dirX * MUZZLE_LEN,
-    y: cy + dirY * MUZZLE_LEN,
-    vx: dirX * BULLET_SPEED,
-    vy: dirY * BULLET_SPEED,
-    size: BULLET_SIZE,
-  });
+  function shootBullet(cx, cy, dirX, dirY) {
+    bullets.push({
+      x: cx + dirX * MUZZLE_LEN,
+      y: cy + dirY * MUZZLE_LEN,
+      vx: dirX * BULLET_SPEED,
+      vy: dirY * BULLET_SPEED,
+      size: bigBulletActive ? BULLET_SIZE * 2.5 : BULLET_SIZE,
+    });
+  }
+
+  if (tripleShotActive) {
+    const spread = 0.3;
+    const left = {
+      x: dirX * Math.cos(-spread) - dirY * Math.sin(-spread),
+      y: dirX * Math.sin(-spread) + dirY * Math.cos(-spread),
+    };
+    const right = {
+      x: dirX * Math.cos(spread) - dirY * Math.sin(spread),
+      y: dirX * Math.sin(spread) + dirY * Math.cos(spread),
+    };
+    shootBullet(cx, cy, dirX, dirY);
+    shootBullet(cx, cy, left.x, left.y);
+    shootBullet(cx, cy, right.x, right.y);
+  } else {
+    shootBullet(cx, cy, dirX, dirY);
+  }
 }
 
 function restartGame() {
@@ -348,6 +480,7 @@ function restartGame() {
   bullets.length = 0;
   enemies.length = 0;
   particles.length = 0;
+  powerups.length = 0;
 
   tankX = 0;
   tankY = 0;
@@ -358,6 +491,15 @@ function restartGame() {
     clearTimeout(spawnTimeoutId);
     spawnTimeoutId = null;
   }
+
+  if (powerupIntervalId) {
+    clearInterval(powerupIntervalId);
+    powerupIntervalId = null;
+  }
+
+  bigBulletActive = false;
+  tripleShotActive = false;
+  slowActive = false;
 
   if (musicPlaying) bgMusic.play().catch(() => {});
 
@@ -411,14 +553,11 @@ function spawnEnemy() {
     y = H + SPAWN_MARGIN;
   }
 
-  const elapsed = gameStarted ? (Date.now() - startTime) / 1000 : 0;
-  const speedBoost = Math.min(elapsed / 60, 1) * 3;
-
   enemies.push({
     x,
     y,
     size: rand(ENEMY_SIZE_MIN, ENEMY_SIZE_MAX),
-    speed: rand(ENEMY_SPEED_MIN + speedBoost, ENEMY_SPEED_MAX + speedBoost),
+    speed: rand(ENEMY_SPEED_MIN, ENEMY_SPEED_MAX),
     color: pick(ENEMY_COLORS),
   });
 }
@@ -623,9 +762,9 @@ function draw() {
     const dx = cx - enemy.x;
     const dy = cy - enemy.y;
     const mag = Math.hypot(dx, dy) || 1;
-
-    enemy.x += (dx / mag) * enemy.speed;
-    enemy.y += (dy / mag) * enemy.speed;
+    const currentSpeed = slowActive ? enemy.speed * 0.3 : enemy.speed;
+    enemy.x += (dx / mag) * currentSpeed;
+    enemy.y += (dy / mag) * currentSpeed;
 
     if (hit(enemy.x, enemy.y, enemy.size, cx, cy, TANK_SIZE)) {
       enemies.splice(i, 1);
@@ -654,6 +793,21 @@ function draw() {
         }
         break;
       }
+    }
+  }
+
+  // Move power-ups + check tank collision
+  for (let i = powerups.length - 1; i >= 0; i -= 1) {
+    const pu = powerups[i];
+    const dx = cx - pu.x;
+    const dy = cy - pu.y;
+    const mag = Math.hypot(dx, dy) || 1;
+    pu.x += (dx / mag) * POWERUP_SPEED;
+    pu.y += (dy / mag) * POWERUP_SPEED;
+
+    if (hit(pu.x, pu.y, POWERUP_SIZE, cx, cy, TANK_SIZE)) {
+      applyPowerup(pu.type);
+      powerups.splice(i, 1);
     }
   }
 
@@ -692,6 +846,24 @@ function draw() {
       enemy.y - enemy.size / 2,
       enemy.size,
       enemy.size,
+    );
+  }
+
+  // Draw power-ups
+  for (const pu of powerups) {
+    ctx.fillStyle = pu.color;
+    ctx.fillRect(
+      pu.x - POWERUP_SIZE / 2,
+      pu.y - POWERUP_SIZE / 2,
+      POWERUP_SIZE,
+      POWERUP_SIZE,
+    );
+    ctx.fillStyle = "rgba(0,0,0,0.4)";
+    ctx.fillRect(
+      pu.x - POWERUP_SIZE / 4,
+      pu.y - POWERUP_SIZE / 4,
+      POWERUP_SIZE / 2,
+      POWERUP_SIZE / 2,
     );
   }
 
