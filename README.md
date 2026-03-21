@@ -9,16 +9,15 @@ The setup has to be one to one and initiated through a QR code. The project runs
 The goal is to build a working minimum viable product and progressively improve it while keeping track of decisions, reflections, and experiments.
 
 ## 🔐 SSL Certificates
- 
+
 This project runs over HTTPS locally and requires self-signed certificates before starting.
- 
+
 Create the `certs/` folder and generate the certificates:
- 
+
 ```bash
 mkdir certs
 openssl req -x509 -newkey rsa:4096 -keyout certs/localhost.key -out certs/localhost.crt -days 365 -nodes -subj "/CN=localhost"
 ```
- 
 
 ## Week 1 – Concept Thinking
 
@@ -666,49 +665,52 @@ On the game over screen it shows the current score and best score. If you just b
 These were all small individual changes but together they make the game feel finished. The particles and sounds give immediate feedback on every action. The best score gives you something to chase on repeat runs. The countdown removes that jarring jump straight into gameplay. None of it is technically complex but it makes a big difference in how the game feels to actually play.
 
 ## Week 5 – ICE Failures, Cleanup and Simplification
- 
+
 ### The Connection Problem
- 
+
 Everything worked fine on my home wifi - both phone and desktop connected instantly, Android and iPhone, no issues. But the moment I tested on the university network it broke. The ICE negotiation was getting blocked by the network and the peer connection never completed.
- 
+
 I had a socket.io fallback in place for when WebRTC failed but instead of making things more stable it just made the code harder to follow. Two transport paths running in parallel, conditional checks everywhere, state that was hard to reason about. It was not a clean solution - it was a band-aid on top of a band-aid.
- 
+
 ### Cleaning Up First
- 
+
 Before trying to fix the connection problem I decided the code needed a cleanup first. The project had grown messy over the weeks - things added quickly, workarounds left in, commented out code sitting around. `index.js` alone had grown to the point where I deleted over 100 lines that were either redundant, overcomplicated, or left over from earlier experiments.
- 
+
 The goal was to get back to something I could actually read and reason about before touching anything else.
- 
+
 ### What Changed in index.js
- 
+
 The server ended up cleaner and more explicit after the rewrite:
- 
+
 **Added a crash handler** at the top so uncaught errors don't silently kill the process:
+
 ```javascript
 process.on("uncaughtException", (err) => {
   console.error("CRASH:", err.message);
 });
 ```
- 
+
 **Renamed the cert files** from `key.pem` / `cert.pem` to `localhost.key` / `localhost.crt` to make it clearer what they are and align with the generation command in the README.
- 
+
 **Converted `emitClientList` from an arrow function to a regular function declaration** - small but more consistent with the rest of the codebase.
- 
+
 **Added signal routing log** so it's visible in the console which signals are being relayed and between which peers - useful for debugging ICE issues:
+
 ```javascript
 socket.on("signal", (peerId, signal) => {
-  console.log(`Routing signal ${signal?.type || "unknown"} from ${socket.id} to ${peerId}`);
+  console.log(
+    `Routing signal ${signal?.type || "unknown"} from ${socket.id} to ${peerId}`,
+  );
   io.to(peerId).emit("signal", peerId, signal, socket.id);
 });
 ```
- 
-### What changed in desktop.js
 
+### What changed in desktop.js
 
 The problem was that I was only using a STUN server:
 
 ```javascript
-iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+iceServers: [{ urls: "stun:stun.l.google.com:19302" }];
 ```
 
 STUN servers only help a device discover its public IP address. On a network that actively blocks peer-to-peer traffic - like a university network - STUN is not enough. The two devices can find each other but cannot actually send data directly between them.
@@ -754,7 +756,6 @@ function getIceConfig() {
 
 Same TURN server fix as desktop.js - the before version only had a STUN server which is why the connection failed on the university network. TURN was added to the ICE config:
 
-
 A few other things were cleaned up at the same time:
 
 **`destroyPeer()` function** - before, peer cleanup was just `peer.destroy()` called inline. Now it's a proper function with a try/catch and a null check, and it's called on disconnect so a stale peer doesn't linger:
@@ -788,24 +789,129 @@ function log(message) {
 }
 ```
 
-
 After those changes the connection worked on the university network.
 
-
 ### My Reflection
- 
+
 The university network problem was frustrating because it only showed up in one specific environment and worked everywhere else. Trying to patch around it with a socket fallback made the codebase harder to manage than the problem itself. Stepping back, deleting the overcomplicated parts, and simplifying first was the right call - it's much easier to debug a clean codebase than a messy one.
 
 ## Cleaning Up the File Structure
- 
+
 With the connection finally stable I turned my attention to the project structure. Everything had been growing organically and the CSS had ended up in the wrong places. I split the styling into dedicated files - one for the desktop game view, one for the controller - so each file only contains what it needs. Much easier to find things and make changes without worrying about breaking something on the other page.
- 
+
 ### Styling
- 
+
 This was probably the most enjoyable part of the whole project so far. With the structure clean I could actually focus on making the game look good and watch it come together visually. I switched everything over to Press Start 2P to give it a consistent retro feel - the HUD, the overlays, the controller buttons, all of it. Seeing it go from raw canvas with plain system fonts to something that actually looks like a game was satisfying.
- 
+
 I also added the instructions section to the desktop overlay so new players know what to expect before connecting their phone. The debug div on the controller was commented out since the connection is stable and there is nothing left to debug - the phone UI is now clean with just the status text and buttons.
- 
-### Adding Power-ups
- 
+
+## Adding Power-ups
+
 With the game feeling solid I moved on to the feature I had been planning since week 4 - collectibles and power-ups. The idea was to spawn random pick-ups on the screen that the tank collects by moving over them, each one giving a temporary effect. Things like a speed boost, a shield, or faster shooting to make each run feel different and give the player something to chase beyond just the score.
+
+### Power-ups
+
+With the core gameplay stable I wanted to add something that would make each run feel different. The idea was simple - spawn collectibles that chase the tank just like enemies do, but instead of hurting it they give a temporary boost when touched.
+
+#### How They Work
+
+Power-ups use the exact same movement system as enemies. Every frame they calculate the direction toward the tank and move along it at a fixed speed. The only difference is what happens on collision - instead of losing a life, the effect is applied and the power-up disappears.
+
+```javascript
+for (let i = powerups.length - 1; i >= 0; i -= 1) {
+  const pu = powerups[i];
+  const dx = cx - pu.x;
+  const dy = cy - pu.y;
+  const mag = Math.hypot(dx, dy) || 1;
+  pu.x += (dx / mag) * POWERUP_SPEED;
+  pu.y += (dy / mag) * POWERUP_SPEED;
+
+  if (hit(pu.x, pu.y, POWERUP_SIZE, cx, cy, TANK_SIZE)) {
+    applyPowerup(pu.type);
+    powerups.splice(i, 1);
+  }
+}
+```
+
+They move slower than enemies (`POWERUP_SPEED = 0.6`) so the player has time to decide whether to go for them or focus on surviving.
+
+### The Five Power-ups
+
+There are five types split across three color families so they're easy to read at a glance on screen:
+
+**Green - survival**
+
+- `extraLife` - adds one heart back instantly, capped at 5
+
+**Blue - shooting**
+
+- `bigBullet` - bullets are 2.5x their normal size for 10 seconds
+- `tripleShot` - fires three bullets in a spread for 10 seconds
+
+**Purple - crowd control**
+
+- `nuke` - instantly destroys every enemy on screen and spawns particles for each one
+- `slow` - reduces all enemy speed to 30% for 10 seconds
+
+#### Weighted Spawn
+
+Not all power-ups spawn with equal probability. Extra life and nuke are more common because they have the most immediate impact on a run. Blue power-ups are rarer since they're more powerful offensively.
+
+```javascript
+const POWERUPS = [
+  { type: "extraLife", color: "#44ff88", weight: 4 },
+  { type: "bigBullet", color: "#44aaff", weight: 2 },
+  { type: "tripleShot", color: "#2266ff", weight: 2 },
+  { type: "nuke", color: "#cc44ff", weight: 3 },
+  { type: "slow", color: "#aa22ff", weight: 2 },
+];
+```
+
+The `pickWeighted()` function rolls a random number against the total weight and walks the list until it finds the winner - simple and easy to rebalance just by changing the numbers.
+
+#### Triple Shot Rotation
+
+The triple shot was the most interesting to implement. The left and right bullets need to fire at an angle from the main direction. I used a 2D rotation matrix to rotate the direction vector by ±0.3 radians:
+
+```javascript
+const spread = 0.3;
+const left = {
+  x: dirX * Math.cos(-spread) - dirY * Math.sin(-spread),
+  y: dirX * Math.sin(-spread) + dirY * Math.cos(-spread),
+};
+const right = {
+  x: dirX * Math.cos(spread) - dirY * Math.sin(spread),
+  y: dirX * Math.sin(spread) + dirY * Math.cos(spread),
+};
+shootBullet(cx, cy, dirX, dirY);
+shootBullet(cx, cy, left.x, left.y);
+shootBullet(cx, cy, right.x, right.y);
+```
+
+#### Toast Notifications
+
+When a power-up is collected a small message appears on the right side of the HUD in the matching color - `+1 LIFE`, `NUKE!`, `BIG BULLETS`, `TRIPLE SHOT`, or `ENEMIES SLOW`. It fades out slowly so the player has time to read it without it being distracting.
+
+```javascript
+function showToast(message, color) {
+  activeToast = { message, color, life: 1 };
+}
+```
+
+Each frame the `life` value ticks down and `globalAlpha` is set from it. The multiplier on the alpha controls how fast the fade actually kicks in - it stays fully opaque for most of its duration and then drops off at the end.
+
+#### Power-up Legend on the Ready Screen
+
+Since the power-ups aren't obvious from color alone I added a legend to the ready screen so players know what each color means before the game starts. Each entry is a colored square next to a short label, matching the exact colors used in the game.
+
+#### My Reflection
+
+The power-ups turned out to be one of the most fun things to add. Seeing the nuke wipe the screen clean with a burst of particles, or watching the enemies crawl during a slow - it changed the feel of the game completely. Each run now has moments where the timing of a power-up changes everything, which is exactly what I was going for.
+
+## Final Reflection
+
+This project was a fun experience but also a stressful one. The hardest part wasn't really the network - it was that I kept overcomplicating the code. Things would stop working and instead of stepping back I'd add another layer to fix it, which just made everything messier and harder to debug. At some point the codebase got to a state where I couldn't easily reason about it anymore and that's when I had to stop and clean everything up from scratch.
+
+But I learned a lot from that. Bugs and errors are honestly one of the best ways to learn - when something breaks and you have to figure out why, it sticks in your memory in a way that just reading about it never does. For me the big lesson was to stop overcomplicating things. Simpler code is easier to fix, easier to read, and easier to build on top of.
+
+I'm glad I did it. It was stressful at times but I had fun watching it grow from a basic canvas demo into something that actually feels like a game. And there's still more I'd want to add - this is the kind of project I could keep building on.
