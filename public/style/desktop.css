@@ -45,7 +45,7 @@ body {
   color: #2d7;
   text-align: center;
   line-height: 2.5;
-  margin-bottom: 4rem;
+  margin-bottom: 1.5rem;
 }
 
 #tips p {
@@ -168,4 +168,37 @@ body {
 #countdown-number {
   font-size: 200px;
   font-weight: bold;
+}
+
+#power-ups {
+  margin-bottom: 2rem;
+  color: white;
+}
+
+#powerups-title {
+  font-family: "Press Start 2P", monospace;
+  font-size: 1.5rem;
+  color: white;
+  margin: 24px 0 12px;
+}
+
+#powerups-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.powerup-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-family: "Press Start 2P", monospace;
+  font-size: 1rem;
+  color: #ccc;
+}
+
+.powerup-dot {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
 }

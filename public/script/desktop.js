@@ -204,6 +204,8 @@ let bigBulletTimer = null;
 let tripleShotTimer = null;
 let slowTimer = null;
 
+let activeToast = null;
+
 // ── Ready screen / countdown ──────────────────────────────────────────────────
 function showReadyScreen() {
   if (gameStarted) return;
@@ -341,44 +343,48 @@ function startPowerupCycle() {
 function applyPowerup(type) {
   if (type === "extraLife") {
     lives = Math.min(lives + 1, 5);
+    showToast("+1 LIFE", "#44ff88");
   }
-
   if (type === "nuke") {
     spawnParticles_nuke();
     enemies.length = 0;
+    showToast("NUKE!", "#cc44ff");
   }
-
   if (type === "bigBullet") {
     bigBulletActive = true;
     clearTimeout(bigBulletTimer);
     bigBulletTimer = setTimeout(() => {
       bigBulletActive = false;
     }, 10000);
+    showToast("BIG BULLETS", "#44aaff");
   }
-
   if (type === "tripleShot") {
     tripleShotActive = true;
     clearTimeout(tripleShotTimer);
     tripleShotTimer = setTimeout(() => {
       tripleShotActive = false;
     }, 10000);
+    showToast("TRIPLE SHOT", "#2266ff");
   }
-
   if (type === "slow") {
     slowActive = true;
     clearTimeout(slowTimer);
     slowTimer = setTimeout(() => {
       slowActive = false;
     }, 10000);
+    showToast("ENEMIES SLOW", "#aa22ff");
   }
 }
-
 function spawnParticles_nuke() {
   for (const enemy of enemies) {
     spawnParticles(enemy.x, enemy.y, enemy.color, enemy.size);
   }
   enemyHitSound.currentTime = 0;
   enemyHitSound.play().catch(() => {});
+}
+
+function showToast(message, color) {
+  activeToast = { message, color, life: 1 };
 }
 
 // ── QR / overlay ──────────────────────────────────────────────────────────────
@@ -673,6 +679,21 @@ function drawHUD(W) {
   ctx.textAlign = "left";
   ctx.font = `10px ${FONT}`;
   ctx.fillText(label, 36, 42);
+
+  if (activeToast) {
+    activeToast.life -= 0.003;
+
+    if (activeToast.life <= 0) { 
+      activeToast = null;
+    } else {
+      ctx.globalAlpha = Math.min(activeToast.life * 4, 1);
+      ctx.fillStyle = activeToast.color;
+      ctx.font = `24px ${FONT}`;
+      ctx.textAlign = "right";
+      ctx.fillText(activeToast.message, W - 20, 78);
+      ctx.globalAlpha = 1;
+    }
+  }
 }
 
 function drawMusicBtn() {
