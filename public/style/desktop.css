@@ -87,7 +87,6 @@ body {
   color: #aaa;
 }
 
-/* ── Ready screen ── */
 #ready-screen {
   position: fixed;
   inset: 0;
@@ -149,7 +148,6 @@ body {
   box-shadow: 0 2px 0 #2d7;
 }
 
-/* ── Countdown ── */
 #countdown {
   position: fixed;
   inset: 0;
