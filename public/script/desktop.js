@@ -274,7 +274,7 @@ const playerHitSound = new Audio("sound/playerHitSound.wav");
 enemyHitSound.volume = 0.3;
 
 // ── Music button hit area ─────────────────────────────────────────────────────
-const musicBtn = { x: 110, y: 44, w: 22, h: 22 };
+const musicBtn = { x: 160, y: 12, w: 44, h: 44 };
 
 canvas.addEventListener("click", (e) => {
   const rect = canvas.getBoundingClientRect();
@@ -683,7 +683,7 @@ function drawHUD(W) {
   if (activeToast) {
     activeToast.life -= 0.003;
 
-    if (activeToast.life <= 0) { 
+    if (activeToast.life <= 0) {
       activeToast = null;
     } else {
       ctx.globalAlpha = Math.min(activeToast.life * 4, 1);
@@ -699,28 +699,50 @@ function drawHUD(W) {
 function drawMusicBtn() {
   const { x: bx, y: by, w: bs } = musicBtn;
 
-  ctx.fillStyle = COLOR_MUSIC_BTN_BG;
-  ctx.strokeStyle = COLOR_MUSIC_BTN_BORDER;
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.roundRect(bx, by, bs, bs, 3);
-  ctx.fill();
-  ctx.stroke();
-
   const iconX = bx + bs / 2;
   const iconY = by + bs / 2;
+  const p = 4; // pixel size
+
   ctx.fillStyle = COLOR_MUSIC_ICON;
 
   if (musicPlaying) {
-    ctx.fillRect(iconX - 4, iconY - 4, 3, 8);
-    ctx.fillRect(iconX + 1, iconY - 4, 3, 8);
+    // Pixel pause — two columns of pixels
+    const pauseGrid = [
+      [1, 0, 1],
+      [1, 0, 1],
+      [1, 0, 1],
+      [1, 0, 1],
+      [1, 0, 1],
+    ];
+    const offX = iconX - (pauseGrid[0].length * p) / 2;
+    const offY = iconY - (pauseGrid.length * p) / 2;
+    for (let row = 0; row < pauseGrid.length; row++) {
+      for (let col = 0; col < pauseGrid[row].length; col++) {
+        if (pauseGrid[row][col]) {
+          ctx.fillRect(offX + col * p, offY + row * p, p, p);
+        }
+      }
+    }
   } else {
-    ctx.beginPath();
-    ctx.moveTo(iconX - 3, iconY - 5);
-    ctx.lineTo(iconX + 5, iconY);
-    ctx.lineTo(iconX - 3, iconY + 5);
-    ctx.closePath();
-    ctx.fill();
+    // Pixel play arrow
+    const playGrid = [
+      [1, 0, 0, 0, 0],
+      [1, 1, 0, 0, 0],
+      [1, 1, 1, 0, 0],
+      [1, 1, 1, 1, 0],
+      [1, 1, 1, 0, 0],
+      [1, 1, 0, 0, 0],
+      [1, 0, 0, 0, 0],
+    ];
+    const offX = iconX - (playGrid[0].length * p) / 2;
+    const offY = iconY - (playGrid.length * p) / 2;
+    for (let row = 0; row < playGrid.length; row++) {
+      for (let col = 0; col < playGrid[row].length; col++) {
+        if (playGrid[row][col]) {
+          ctx.fillRect(offX + col * p, offY + row * p, p, p);
+        }
+      }
+    }
   }
 }
 
