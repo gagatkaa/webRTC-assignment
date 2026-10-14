@@ -1,4 +1,25 @@
-# webRTC-assignment
+# Tilt the World — phone-controlled digital terrarium
+
+> Tilt your phone to change the gravity of a digital world on your desktop screen, in real time.
+
+**What it is:** An interactive browser experience where a smartphone becomes a physical controller. Scan a QR code, pair one-to-one, and the phone's gyroscope/accelerometer reshapes a digital terrarium on the desktop.
+
+**What I did:** Concept, interaction design, and all frontend + realtime code (solo project, Howest DEVINE).
+
+**Built with:** JavaScript · WebRTC data channels (simple-peer) · Socket.io for signaling · Express · Device orientation APIs · QR pairing
+
+**What it shows:** realtime communication between devices, designing for physical input, and an honest development diary (below) documenting decisions, problems and AI use.
+
+### Run it locally
+```bash
+npm install
+npm start
+```
+(HTTPS certificates required — see below.)
+
+---
+
+## Development diary
 
 This assignment is about controlling a desktop JavaScript experience with a smartphone using a WebRTC data channel.
 
